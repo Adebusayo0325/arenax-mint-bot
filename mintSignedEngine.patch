@@ -1,0 +1,150 @@
+--- a/src/core/mintSignedEngine.js
++++ b/src/core/mintSignedEngine.js
+@@ -124,16 +124,35 @@
+ // ── Sig fetching ──────────────────────────────────────────────────────────────
+ 
+ /**
+- * Attempts to fetch a mintSigned signature from the project's API.
++ * Fetches a mintSigned signature from a project's API — but ONLY if you've
++ * explicitly configured one via MINT_SIGNED_API_URL.
+  *
+- * Priority:
+- *   1. MINT_SIGNED_API_URL env var (set per-project)
+- *   2. Common API patterns probed automatically
++ * FIX (v25): this function used to "auto-fetch" by guessing at URL patterns
++ * that don't correspond to any real, documented API
++ * (`<contract>.vercel.app/api/sign`, `api.opensea.io/.../drops/.../sign`,
++ * `api.<slug>.xyz/mint/sign/...`). None of these exist for the vast
++ * majority of projects — they were invented patterns, not discovered ones.
++ * Worse, OpenSea Studio / SeaDrop allowlist phases (GTD, FCFS) are signed
++ * by an endpoint that lives *inside* opensea.io's authenticated session —
++ * it isn't a public REST API and was never going to respond to a guess.
++ * Probing it just burned time and produced the confusing "no sig fetched"
++ * failures.
+  *
+- * Returns { sig, mintParams, salt, feeRecipient } or null on failure.
++ * There is no universal signing endpoint. So this function now does
++ * exactly one thing: call the URL *you* configured for *this* project,
++ * because you found it yourself (DevTools → Network → XHR while minting
++ * normally) and know it's real. If you haven't set one, this returns null
++ * immediately — no guessing, no silent probing.
+  *
+- * To find the right URL for a new project:
+- *   1. Open the mint site in desktop Chrome (or use adb/scrcpy from Android)
++ * For projects with no public signing API at all (most OpenSea Studio
++ * allowlist phases), the only legitimate route is the Manual Provider:
++ * you obtain the actual signature once per eligible wallet through the
++ * real mint site, then paste it into the bot's EIP-712 field so the bot
++ * can broadcast the transaction. See buildMintSignedArgs() below.
++ *
++ * To find a real per-project URL (only works if the project genuinely
++ * exposes one):
++ *   1. Open the mint site in desktop Chrome (or via adb/scrcpy from Android)
+  *   2. DevTools → Network → XHR — filter by "sign" or "mint"
+  *   3. Connect wallet and click Mint
+  *   4. Copy the request URL, replace your wallet address with {address}
+@@ -141,61 +160,52 @@
+  */
+ async function autoFetchMintSignedSig(contractAddress, walletAddress, chainId = 1) {
+   const envUrl = process.env.MINT_SIGNED_API_URL;
++  if (!envUrl) {
++    logger.warn(`[mintSigned] No MINT_SIGNED_API_URL configured — not guessing. Use the EIP-712 manual-signature field instead.`);
++    return null;
++  }
+ 
+-  const buildUrl = (template) =>
+-    template
+-      .replace('{address}', walletAddress)
+-      .replace('{contract}', contractAddress)
+-      .replace('{chainId}', chainId);
+-
+-  // Candidate URL patterns to probe
+-  const candidates = envUrl
+-    ? [buildUrl(envUrl)]
+-    : [
+-        // Generic patterns
+-        `https://${contractAddress.toLowerCase()}.vercel.app/api/sign?address=${walletAddress}`,
+-        // SeaDrop / OpenSea drop API
+-        `https://api.opensea.io/api/v2/drops/${contractAddress}/sign?wallet=${walletAddress}`,
+-        // Common project API patterns
+-        `https://api.${contractAddress.slice(2, 10).toLowerCase()}.xyz/mint/sign/${walletAddress}`,
+-      ];
+-
+-  for (const url of candidates) {
+-    try {
+-      const res = await fetch(url, {
+-        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+-        signal: AbortSignal.timeout(8000),
+-      });
+-      if (!res.ok) continue;
+-      const json = await res.json();
+-
+-      // Extract sig from common response shapes
+-      const sig =
+-        json?.signature || json?.sig || json?.data?.signature ||
+-        json?.result?.signature || json?.mintSignature || null;
+-
+-      const mintParams =
+-        json?.mintParams || json?.params || json?.data?.mintParams ||
+-        json?.result?.mintParams || null;
+-
+-      const salt =
+-        json?.salt ?? json?.data?.salt ?? json?.result?.salt ?? null;
+-
+-      const feeRecipient =
+-        json?.feeRecipient || json?.data?.feeRecipient ||
+-        json?.result?.feeRecipient || ethers.ZeroAddress;
+-
+-      if (sig && sig.startsWith('0x')) {
+-        logger.info(`[mintSigned] Got sig from ${new URL(url).hostname} for ${walletAddress.slice(0, 8)}`);
+-        return { sig, mintParams, salt, feeRecipient };
+-      }
+-    } catch (e) {
+-      logger.warn(`[mintSigned] probe failed ${url.slice(0, 60)}: ${e.message.slice(0, 50)}`);
++  const url = envUrl
++    .replace('{address}', walletAddress)
++    .replace('{contract}', contractAddress)
++    .replace('{chainId}', chainId);
++
++  try {
++    const res = await fetch(url, {
++      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
++      signal: AbortSignal.timeout(8000),
++    });
++    if (!res.ok) {
++      logger.warn(`[mintSigned] Configured API returned ${res.status} for ${walletAddress.slice(0, 8)}`);
++      return null;
+     }
+-  }
++    const json = await res.json();
+ 
+-  logger.warn(`[mintSigned] Could not auto-fetch sig for ${walletAddress.slice(0, 8)}. Set MINT_SIGNED_API_URL in .env`);
+-  return null;
++    const sig =
++      json?.signature || json?.sig || json?.data?.signature ||
++      json?.result?.signature || json?.mintSignature || null;
++
++    const mintParams =
++      json?.mintParams || json?.params || json?.data?.mintParams ||
++      json?.result?.mintParams || null;
++
++    const salt =
++      json?.salt ?? json?.data?.salt ?? json?.result?.salt ?? null;
++
++    const feeRecipient =
++      json?.feeRecipient || json?.data?.feeRecipient ||
++      json?.result?.feeRecipient || ethers.ZeroAddress;
++
++    if (sig && sig.startsWith('0x')) {
++      logger.info(`[mintSigned] Got sig from configured API (${new URL(url).hostname}) for ${walletAddress.slice(0, 8)}`);
++      return { sig, mintParams, salt, feeRecipient };
++    }
++    logger.warn(`[mintSigned] Configured API responded but had no usable signature field for ${walletAddress.slice(0, 8)}`);
++    return null;
++  } catch (e) {
++    logger.warn(`[mintSigned] Configured API fetch failed: ${e.message.slice(0, 80)}`);
++    return null;
++  }
+ }
+ 
+ // ── Arg builder ───────────────────────────────────────────────────────────────

@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HERMÈS — Mint Engine v3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #080A0E;
+      --surface:  #0E1117;
+      --card:     #131820;
+      --border:   #1E2530;
+      --border2:  #2A3240;
+      --gold:     #E8B84B;
+      --gold2:    #C9972E;
+      --golddim:  rgba(232,184,75,0.12);
+      --green:    #22C55E;
+      --red:      #EF4444;
+      --blue:     #3B82F6;
+      --text:     #E8EAF0;
+      --muted:    #6B7280;
+      --mono:     'JetBrains Mono', monospace;
+    }
+
+    html, body { height: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.5; display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* ─── SCROLLBAR ──────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ─── HEADER ─────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-h {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #E8B84B, #C9972E);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px; color: #080A0E; letter-spacing: -1px;
+    }
+    .logo-name { font-weight: 700; font-size: 15px; letter-spacing: 2px; color: var(--gold); }
+    .logo-ver { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .chain-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 20px; padding: 5px 12px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .chain-pill select { background: none; border: none; color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; outline: none; }
+    .chain-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    /* ─── NAV ────────────────────────────────────── */
+    nav {
+      display: flex; gap: 0; overflow-x: auto;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+    }
+    nav::-webkit-scrollbar { height: 0; }
+    .nav-tab {
+      padding: 12px 18px; font-size: 13px; font-weight: 500;
+      color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap; transition: color .15s, border-color .15s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--gold); border-bottom-color: var(--gold); font-weight: 600; }
+
+    /* ─── MAIN ───────────────────────────────────── */
+    main { flex: 1; padding: 16px; max-width: 680px; margin: 0 auto; width: 100%; }
+    .page { display: none; flex-direction: column; gap: 14px; animation: pageFadeIn .22s ease; }
+    @keyframes pageFadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .page.active { display: flex; }
+
+    /* ─── CARDS ──────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .card:hover { border-color: var(--border2); box-shadow: 0 2px 16px rgba(0,0,0,.18); }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-title { font-weight: 600; font-size: 13px; letter-spacing: .3px; }
+    .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    .badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .5px;
+      padding: 3px 8px; border-radius: 20px;
+    }
+    .badge-gold { background: var(--golddim); color: var(--gold); border: 1px solid rgba(232,184,75,0.3); }
+    .badge-green { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+    .badge-red { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+    .badge-blue { background: rgba(59,130,246,.12); color: var(--blue); border: 1px solid rgba(59,130,246,.3); }
+
+    /* ─── FORM ELEMENTS ──────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-label { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+    .input, .select, .textarea {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s;
+      width: 100%;
+    }
+    .input:focus, .select:focus, .textarea:focus { border-color: var(--gold); }
+    .input::placeholder, .textarea::placeholder { color: var(--muted); }
+    .select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+    .textarea { resize: vertical; font-family: var(--mono); font-size: 11px; min-height: 60px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--gold); cursor: pointer; }
+    .checkbox-row span { font-size: 12px; color: var(--muted); }
+
+    /* ─── BUTTONS ────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px 18px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; border: none; transition: opacity .15s, transform .12s, box-shadow .15s;
+      text-align: center;
+    }
+    .btn:active { transform: scale(.95); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-gold:active { box-shadow: 0 0 16px rgba(232,184,75,.35); }
+    .nav-tab { transition: color .15s, border-color .15s, background .15s; }
+    .wallet-row { transition: background .15s, border-color .15s; }
+    .exec-step { transition: opacity .3s, background .2s; }
+    .exec-step-bullet { transition: all .3s cubic-bezier(.4,0,.2,1); }
+    .mobile-nav { transition: transform .22s cubic-bezier(.4,0,.2,1); transform-origin: top; }
+    .mobile-nav:not(.open) { transform: scaleY(0); display: flex !important; pointer-events: none; opacity: 0; }
+    .mobile-nav.open { transform: scaleY(1); opacity: 1; pointer-events: auto; }
+    .btn-gold { background: linear-gradient(135deg, var(--gold), var(--gold2)); color: #080A0E; width: 100%; }
+    .btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--text); }
+    .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-danger { background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3); color: var(--red); }
+
+    /* ─── STATUS ─────────────────────────────────── */
+    .status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 8px;
+      font-size: 12px; font-weight: 500;
+      background: var(--surface); border: 1px solid var(--border);
+      min-height: 36px;
+    }
+    .status-bar.loading { border-color: var(--gold); color: var(--gold); }
+    .status-bar.ok { border-color: var(--green); color: var(--green); }
+    .status-bar.err { border-color: var(--red); color: var(--red); }
+    .spin { animation: spin .7s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── RESULTS ────────────────────────────────── */
+    .result-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 12px; border-radius: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .result-icon { font-size: 14px; margin-top: 1px; flex-shrink: 0; }
+    .result-body { flex: 1; min-width: 0; }
+    .result-addr { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+    .result-status { font-weight: 600; }
+    .result-tx a { color: var(--gold); text-decoration: none; font-size: 11px; }
+    .result-err { color: var(--red); font-size: 11px; margin-top: 3px; word-break: break-word; }
+    .result-gas { color: var(--blue); font-size: 11px; margin-top: 2px; font-family: var(--mono); }
+
+    /* ─── WALLET LIST ────────────────────────────── */
+    .wallet-checklist { display: flex; flex-direction: column; gap: 6px; }
+    .wallet-check-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      cursor: pointer; transition: border-color .15s;
+    }
+    .wallet-check-item:hover { border-color: var(--border2); }
+    .wallet-check-item.checked { border-color: rgba(232,184,75,.4); background: rgba(232,184,75,.04); }
+    .wallet-check-item input[type=checkbox] { accent-color: var(--gold); width: 14px; height: 14px; flex-shrink: 0; }
+    .wallet-check-info { flex: 1; min-width: 0; }
+    .wallet-check-label { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wallet-check-addr { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .wallet-check-bal { font-family: var(--mono); font-size: 11px; color: var(--gold); flex-shrink: 0; }
+    .wallet-sel-actions { display: flex; gap: 6px; }
+    .wallet-sel-actions button { flex: 1; }
+
+    /* ─── STAT GRID ──────────────────────────────── */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .stat-label { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+    .stat-val { font-size: 20px; font-weight: 700; color: var(--gold); margin-top: 2px; font-family: var(--mono); }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    /* ─── PROOF MODE PANEL ───────────────────────── */
+    .proof-panel { display: none; flex-direction: column; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; }
+    .proof-panel.show { display: flex; }
+
+    /* ─── PHASE INFO CARD ────────────────────────── */
+    .phase-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .phase-row:last-child { border-bottom: none; }
+    .phase-key { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+    .phase-val { font-size: 12px; font-weight: 600; font-family: var(--mono); }
+
+    /* ─── PIPELINE STEPS ─────────────────────────── */
+    .pipeline { display: flex; flex-direction: column; gap: 2px; }
+    .step { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .step:last-child { border-bottom: none; }
+    .step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border2); flex-shrink: 0; }
+    .step-dot.done { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .step-dot.active { background: var(--gold); box-shadow: 0 0 6px var(--gold); animation: pulse 1s infinite; }
+    .step-dot.fail { background: var(--red); }
+    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+    .step-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .step-desc { font-size: 11px; color: var(--muted); margin-left: auto; text-align: right; }
+
+    /* ─── SCHEDULE ITEM ──────────────────────────── */
+    .sched-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; font-size: 12px;
+    }
+    .sched-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 6px var(--gold); flex-shrink: 0; animation: pulse 1.5s infinite; }
+    .sched-info { flex: 1; min-width: 0; }
+    .sched-contract { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+    .sched-cancel { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; }
+
+    /* ─── NFT PORTFOLIO ──────────────────────────── */
+    .nft-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .nft-portfolio-scroll { max-height: 480px; overflow-y: auto; padding-right: 2px; }
+    .nft-portfolio-scroll::-webkit-scrollbar { width: 4px; }
+    .nft-portfolio-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+    .nft-card { display: flex; gap: 12px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    .nft-thumb { width: 44px; height: 44px; border-radius: 8px; background: var(--border); overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .nft-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .nft-meta { flex: 1; min-width: 0; }
+    .nft-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nft-detail { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 1px; }
+    .nft-list-btn { background: transparent; border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-size: 11px; padding: 4px 8px; cursor: pointer; }
+    .nft-list-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+    /* ─── HISTORY CHART ──────────────────────────── */
+    #historyChart { width:100%; height:140px; }
+    .history-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .history-row:last-child { border-bottom: none; }
+
+    /* ─── TOAST ──────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(10px);
+      background: var(--card); border: 1px solid var(--border2); border-radius: 10px;
+      padding: 10px 20px; font-size: 13px; font-weight: 500;
+      opacity: 0; transition: opacity .2s, transform .2s;
+      z-index: 9999; pointer-events: none; max-width: 320px; text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.green { border-color: rgba(34,197,94,.4); color: var(--green); }
+    #toast.red { border-color: rgba(239,68,68,.4); color: var(--red); }
+
+    /* ─── DIVIDER ────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* ─── MISC ───────────────────────────────────── */
+    code { font-family: var(--mono); font-size: 11px; color: var(--gold); background: var(--golddim); padding: 1px 5px; border-radius: 4px; }
+    .hint { font-size: 11px; color: var(--muted); }
+    .empty { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; }
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    /* ═══════════════════════════════════════════════════
+       MOBILE RESPONSIVE  — added v19
+       Targets: 360px (small Android) → 414px (iPhone Pro Max)
+       ═══════════════════════════════════════════════════ */
+
+    /* ── Base mobile tweaks (≤600px) ─────────────────── */
+    @media (max-width: 600px) {
+      /* Header */
+      header { padding: 10px 12px; gap: 8px; }
+      .logo-name { font-size: 13px; letter-spacing: 1.5px; }
+      .logo-ver  { display: none; }
+      .chain-pill { padding: 4px 8px; }
+      .chain-pill select { font-size: 11px; max-width: 90px; }
+      .chain-dot { width: 6px; height: 6px; }
+
+      /* Nav — scrolls horizontally, no overflow */
+      nav { padding: 0 4px; -webkit-overflow-scrolling: touch; }
+      .nav-tab { padding: 10px 11px; font-size: 12px; }
+
+      /* Main */
+      main { padding: 10px 10px 24px; }
+
+      /* Cards */
+      .card-head { padding: 11px 13px 9px; }
+      .card-title { font-size: 12px; }
+      .card-body  { padding: 12px 13px; gap: 10px; }
+
+      /* Stats — 2 col is fine on 360+, reduce font */
+      .stat-grid { gap: 8px; }
+      .stat-val  { font-size: 17px; }
+      .stat-sub  { font-size: 10px; }
+
+      /* Two-column rows → stack */
+      .row2 { grid-template-columns: 1fr; gap: 8px; }
+
+      /* Form elements — big enough to tap (44px min) */
+      .input, .select, .textarea {
+        padding: 11px 12px;
+        font-size: 14px;          /* stops iOS from zooming in */
+        min-height: 44px;
+        border-radius: 9px;
+      }
+      .select { padding-right: 30px; }
+      .textarea { font-size: 12px; }
+      .field-label { font-size: 10px; }
+
+      /* Buttons — thumb-friendly */
+      .btn        { padding: 13px 16px; font-size: 13px; min-height: 46px; border-radius: 9px; }
+      .btn-sm     { padding: 9px 12px;  font-size: 11px; min-height: 38px; }
+      .btn-danger { padding: 11px 14px; min-height: 42px; }
+
+      /* Wallet checklist */
+      .wallet-check-item { padding: 10px 10px; }
+      .wallet-check-label { font-size: 12px; }
+      .wallet-check-addr  { font-size: 10px; }
+      .wallet-check-bal   { font-size: 11px; }
+      .wallet-sel-actions { gap: 8px; }
+      .wallet-sel-actions button { flex: 1; }
+
+      /* Results */
+      .result-item { padding: 9px 10px; gap: 8px; }
+      .result-body { min-width: 0; }
+      .result-addr { font-size: 10px; }
+      .result-err  { font-size: 10px; }
+
+      /* Phase rows — stack label above value on small screens */
+      .phase-row { flex-wrap: wrap; gap: 2px; padding: 7px 0; }
+      .phase-val { font-size: 11px; word-break: break-all; }
+
+      /* Pipeline steps */
+      .step { padding: 7px 0; gap: 8px; }
+      .step-name { font-size: 11px; }
+      .step-desc { font-size: 10px; max-width: 55%; }
+
+      /* Schedule items */
+      .sched-item { flex-wrap: wrap; gap: 6px; }
+      .sched-info { min-width: calc(100% - 34px); }
+
+      /* NFT grid */
+      .nft-thumb { width: 40px; height: 40px; }
+      .nft-name  { font-size: 12px; }
+
+      /* History row */
+      .history-row { flex-wrap: wrap; gap: 4px; }
+
+      /* Toast — full width on mobile */
+      #toast {
+        width: calc(100% - 24px);
+        max-width: none;
+        bottom: env(safe-area-inset-bottom, 16px);
+        font-size: 12px;
+      }
+
+      /* Status bar */
+      .status-bar { font-size: 11px; padding: 8px 10px; }
+
+      /* Proof panel */
+      .proof-panel { padding: 10px; }
+
+      /* Code tags */
+      code { font-size: 10px; }
+      .hint { font-size: 10px; }
+    }
+
+    /* ── Very small phones (≤380px, e.g. iPhone SE) ─── */
+    @media (max-width: 380px) {
+      .logo-name  { font-size: 12px; }
+      .nav-tab    { padding: 10px 8px; font-size: 11px; }
+      .stat-grid  { grid-template-columns: 1fr 1fr; }  /* keep 2col even small */
+      .stat-val   { font-size: 15px; }
+      .chain-pill select { max-width: 70px; font-size: 10px; }
+      main        { padding: 8px 8px 20px; }
+      .card-body  { padding: 10px; }
+      .btn        { font-size: 12px; min-height: 44px; }
+    }
+
+    /* ── Landscape mobile fix ─────────────────────────── */
+    @media (max-height: 500px) and (orientation: landscape) {
+      header { padding: 6px 12px; }
+      .logo-h { width: 26px; height: 26px; font-size: 13px; }
+      main { padding: 8px 10px; }
+      .card-body { gap: 8px; }
+    }
+
+    /* ─── HAMBURGER ─────────────────────────────── */
+    .hamburger {
+      display: none; flex-direction: column; justify-content: center;
+      align-items: center; gap: 5px;
+      width: 38px; height: 38px;
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 10px; cursor: pointer; flex-shrink: 0;
+      transition: border-color .15s;
+    }
+    .hamburger:hover { border-color: var(--gold); }
+    .hamburger .hb-bar { width: 17px; height: 2px; background: var(--gold); border-radius: 2px; transition: all .2s; }
+    .hamburger.open .hb-bar:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open .hb-bar:nth-child(2) { opacity: 0; }
+    .hamburger.open .hb-bar:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* ─── MOBILE NAV DROPDOWN ────────────────────── */
+    .mobile-nav {
+      display: none; position: fixed;
+      top: 57px; left: 0; right: 0; z-index: 99;
+      background: var(--surface);
+      border-bottom: 2px solid var(--border);
+      flex-direction: column;
+      box-shadow: 0 12px 32px rgba(0,0,0,.5);
+    }
+    .mobile-nav.open { display: flex; }
+    .mobile-nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 15px 20px;
+      font-size: 14px; font-weight: 500; color: var(--muted);
+      cursor: pointer; border-bottom: 1px solid var(--border);
+      transition: background .1s, color .1s;
+    }
+    .mobile-nav-item .mn-icon { font-size: 16px; width: 22px; text-align: center; }
+    .mobile-nav-item:hover { background: var(--card); color: var(--text); }
+    .mobile-nav-item.active { color: var(--gold); font-weight: 700; background: var(--golddim); }
+    .mobile-nav-item:last-child { border-bottom: none; }
+    .mobile-nav-overlay { display: none; position: fixed; inset: 0; z-index: 98; background: rgba(0,0,0,.3); }
+    .mobile-nav-overlay.open { display: block; }
+
+    @media (max-width: 900px) {
+      .hamburger { display: flex; }
+      /* On mobile we keep the top nav hidden and use the hamburger/drawer only */
+      nav { display: none !important; }
+      /* Sticky bottom quick-nav on mobile for easy one-thumb access */
+      }
+
+    /* ── Bottom tab bar (mobile only) ──────────────────────────── */
+    /* pad page content so bottom bar doesn't overlap last card */
+    @media (max-width: 900px) { .page-content { padding-bottom: 64px !important; } }
+
+
+    /* ─── EXECUTION MODAL ────────────────────────── */
+    .exec-overlay {
+      display: none; position: fixed;
+      inset: 0; z-index: 200;
+      background: rgba(8,10,14,.88);
+      backdrop-filter: blur(6px);
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .exec-overlay.open { display: flex; }
+    .exec-panel {
+      width: 100%; max-width: 680px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px 20px 0 0;
+      padding: 20px 20px 36px;
+      max-height: 92vh; overflow-y: auto;
+    }
+    .exec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .exec-hdr-title { font-weight: 700; font-size: 16px; color: var(--gold); letter-spacing: .3px; }
+    .exec-hdr-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .exec-close-btn { background: transparent; border: 1px solid var(--border2); border-radius: 8px; color: var(--muted); font-size: 16px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .exec-close-btn:hover { border-color: var(--red); color: var(--red); }
+
+    .exec-steps { display: flex; flex-direction: column; gap: 0; }
+    .exec-step {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+      opacity: .45; transition: opacity .3s;
+    }
+    .exec-step:last-child { border-bottom: none; }
+    .exec-step.active, .exec-step.done, .exec-step.error { opacity: 1; }
+    .exec-step-bullet {
+      width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700;
+      background: var(--card); border: 2px solid var(--border2);
+      color: var(--muted); transition: all .3s;
+    }
+    .exec-step.active .exec-step-bullet { background: rgba(232,184,75,.15); border-color: var(--gold); color: var(--gold); }
+    .exec-step.done  .exec-step-bullet { background: rgba(34,197,94,.15); border-color: var(--green); color: var(--green); }
+    .exec-step.error .exec-step-bullet { background: rgba(239,68,68,.15); border-color: var(--red); color: var(--red); }
+    .exec-step-content { flex: 1; min-width: 0; }
+    .exec-step-name { font-size: 12px; font-weight: 700; letter-spacing: .8px; color: var(--muted); text-transform: uppercase; }
+    .exec-step.active .exec-step-name { color: var(--gold); }
+    .exec-step.done  .exec-step-name { color: var(--green); }
+    .exec-step.error .exec-step-name { color: var(--red); }
+    .exec-step-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .exec-step.active .exec-step-desc, .exec-step.done .exec-step-desc { color: var(--text); }
+    .exec-step-detail { margin-top: 6px; font-size: 11px; font-family: var(--mono); color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; word-break: break-all; display: none; }
+    .exec-step.active .exec-step-detail, .exec-step.done .exec-step-detail, .exec-step.error .exec-step-detail { display: block; }
+    .exec-confirm-area { background: var(--card); border: 1px solid var(--border2); border-radius: 10px; padding: 14px; margin-top: 12px; }
+    .exec-confirm-label { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 8px; }
+    .exec-gas-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
+    .exec-gas-row .ek { color: var(--muted); }
+    .exec-gas-row .ev { color: var(--gold); font-weight: 600; font-family: var(--mono); }
+    .exec-confirm-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .exec-results-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+    /* ─── SMART FUND PREVIEW ─────────────────────── */
+    .fund-preview {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 8px; padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .fund-preview-row { display: flex; justify-content: space-between; font-size: 12px; }
+    .fund-preview-row .fk { color: var(--muted); }
+    .fund-preview-row .fv { color: var(--gold); font-weight: 600; font-family: var(--mono); }
+    .fund-warning { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #e08080; }
+    .fund-ok { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #80e0a0; }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ─── HEADER ──────────────────────────────────────────────────────── -->
+<header>
+  <a class="logo" href="#">
+    <div class="logo-h">H</div>
+    <div>
+      <div class="logo-name">HERMÈS</div>
+      <div class="logo-ver">MINT ENGINE V3</div>
+    </div>
+  </a>
+  <div class="header-right">
+    <div class="chain-pill">
+      <div class="chain-dot" id="chain-dot"></div>
+      <select id="global-chain" onchange="onChainChange()">
+        <option value="1">Ethereum</option>
+        <option value="8453">Base</option>
+        <option value="10">Optimism</option>
+        <option value="42161">Arbitrum</option>
+        <option value="137">Polygon</option>
+        <option value="56">BNB Chain</option>
+        <option value="33139">ApeChain 🦍</option>
+        <option value="81457">Blast</option>
+        <option value="43114">Avalanche</option>
+        <option value="59144">Linea</option>
+        <option value="7777777">Zora</option>
+      </select>
+    </div>
+    <button class="hamburger" id="hamburger-btn" onclick="toggleMobileNav()" aria-label="Menu">
+      <span class="hb-bar"></span>
+      <span class="hb-bar"></span>
+      <span class="hb-bar"></span>
+    </button>
+  </div>
+</header>
+
+<!-- ─── DESKTOP NAV ─────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-tab active" data-page="overview">Overview</div>
+  <div class="nav-tab" data-page="mint">Mint</div>
+  <div class="nav-tab" data-page="schedule">Schedule</div>
+  <div class="nav-tab" data-page="nft">Portfolio</div>
+  <div class="nav-tab" data-page="fund">Fund</div>
+  <div class="nav-tab" data-page="wallets">Wallets</div>
+  <div class="nav-tab" data-page="master">Master</div>
+  <div class="nav-tab" data-page="history">History</div>
+</nav>
+
+<!-- ─── MOBILE NAV DROPDOWN ─────────────────────────────────────────── -->
+<div class="mobile-nav-overlay" id="mn-overlay" onclick="closeMobileNav()"></div>
+<div class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-item active" data-page="overview" onclick="mobileNavGo('overview')"><span class="mn-icon">📊</span> Overview</div>
+  <div class="mobile-nav-item" data-page="mint"     onclick="mobileNavGo('mint')">    <span class="mn-icon">🔥</span> Mint</div>
+  <div class="mobile-nav-item" data-page="schedule" onclick="mobileNavGo('schedule')"><span class="mn-icon">⏰</span> Schedule</div>
+  <div class="mobile-nav-item" data-page="nft"      onclick="mobileNavGo('nft')">     <span class="mn-icon">🖼️</span> Portfolio</div>
+  <div class="mobile-nav-item" data-page="fund"     onclick="mobileNavGo('fund')">    <span class="mn-icon">💸</span> Fund</div>
+  <div class="mobile-nav-item" data-page="wallets"  onclick="mobileNavGo('wallets')"> <span class="mn-icon">👛</span> Wallets</div>
+  <div class="mobile-nav-item" data-page="master"   onclick="mobileNavGo('master')">  <span class="mn-icon">🏦</span> Master</div>
+  <div class="mobile-nav-item" data-page="history"  onclick="mobileNavGo('history')"> <span class="mn-icon">📜</span> History</div>
+</div>
+
+<!-- ─── EXECUTION FLOW MODAL ─────────────────────────────────────────── -->
+<div class="exec-overlay" id="exec-overlay">
+  <div class="exec-panel">
+    <div class="exec-hdr">
+      <div>
+        <div class="exec-hdr-title">🔥 Mint Execution</div>
+        <div class="exec-hdr-sub" id="exec-subtitle">Preparing…</div>
+      </div>
+      <button class="exec-close-btn" id="exec-close-btn" onclick="closeExec()" disabled>✕</button>
+    </div>
+    <div class="exec-steps">
+      <div class="exec-step" id="xs-setup">
+        <div class="exec-step-bullet" id="xb-setup">1</div>
+        <div class="exec-step-content">
+          <div class="exec-step-name">Setup</div>
+          <div class="exec-step-desc" id="xd-setup">Configure route &amp; wallets</div>
+          <div class="exec-step-detail" id="xdet-setup"></div>
+        </div>
+      </div>
+      <div class="exec-step" id="xs-preflight">
+        <div class="exec-step-bullet" id="xb-preflight">2</div>
+        <div class="exec-step-content">
+          <div class="exec-step-name">Preflight</div>
+          <div class="exec-step-desc" id="xd-preflight">Simulate &amp; check balances</div>
+          <div class="exec-step-detail" id="xdet-preflight"></div>
+        </div>
+      </div>
+      <div class="exec-step" id="xs-confirm">
+        <div class="exec-step-bullet" id="xb-confirm">3</div>
+        <div class="exec-step-content">
+          <div class="exec-step-name">Confirm</div>
+          <div class="exec-step-desc" id="xd-confirm">Approve spend &amp; gas</div>
+          <div class="exec-step-detail" id="xdet-confirm">
+            <div class="exec-confirm-area" id="exec-confirm-area" style="display:none">
+              <div class="exec-confirm-label">Gas Estimate</div>
+              <div id="exec-gas-rows"></div>
+              <div class="exec-confirm-btns">
+                <button class="btn btn-danger btn-sm" onclick="confirmExec(false)">✕ Cancel</button>
+                <button class="btn btn-gold btn-sm" onclick="confirmExec(true)">🔥 Execute Live</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exec-step" id="xs-execute">
+        <div class="exec-step-bullet" id="xb-execute">4</div>
+        <div class="exec-step-content">
+          <div class="exec-step-name">Execute</div>
+          <div class="exec-step-desc" id="xd-execute">Submit mint to chain</div>
+          <div class="exec-step-detail" id="xdet-execute"></div>
+        </div>
+      </div>
+      <div class="exec-step" id="xs-results">
+        <div class="exec-step-bullet" id="xb-results">5</div>
+        <div class="exec-step-content">
+          <div class="exec-step-name">Results</div>
+          <div class="exec-step-desc" id="xd-results">Receipts &amp; outcomes</div>
+          <div class="exec-step-detail" id="xdet-results">
+            <div class="exec-results-list" id="exec-results-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- OVERVIEW                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-overview">
+  <div class="stat-grid">
+    <div class="stat-box">
+      <div class="stat-label">Master Balance</div>
+      <div class="stat-val" id="ov-master">—</div>
+      <div class="stat-sub">ETH available</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Wallet Count</div>
+      <div class="stat-val" id="ov-wallets">—</div>
+      <div class="stat-sub">funded wallets</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Active Schedules</div>
+      <div class="stat-val" id="ov-schedules">0</div>
+      <div class="stat-sub">pending mints</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Total Funded</div>
+      <div class="stat-val" id="ov-total">—</div>
+      <div class="stat-sub">ETH across wallets</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Wallet Status</span>
+      <button class="btn btn-outline btn-sm" onclick="loadOverview()">↻ Refresh</button>
+    </div>
+    <div class="card-body" id="ov-wallet-list">
+      <div class="empty">Loading wallets…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">⚡ Smart Auto-Fund</span><span class="badge badge-gold">GAS-AWARE</span></div>
+    <div class="card-body">
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Mint Price (ETH)</label>
+          <input class="input" id="ov-mint-price" type="number" placeholder="0.002" step="0.0001" oninput="clearFundPreview()"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Qty / Wallet</label>
+          <input class="input" id="ov-mint-qty" type="number" placeholder="1" min="1" oninput="clearFundPreview()"/>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Chain</label>
+          <select class="select" id="ov-ab-chain">
+            <option value="1">Ethereum</option><option value="8453">Base</option><option value="10">Optimism</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option><option value="33139">ApeChain</option><option value="81457">Blast</option><option value="43114">Avalanche</option><option value="59144">Linea</option><option value="7777777">Zora</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Calculated Target</label>
+          <input class="input" id="ov-target" type="number" placeholder="auto" step="0.0001" readonly style="background:var(--bg);cursor:default"/>
+        </div>
+      </div>
+      <div id="ov-fund-preview" style="display:none" class="fund-preview">
+        <div class="fund-preview-row"><span class="fk">Mint cost/wallet</span><span class="fv" id="fp-mint-cost">—</span></div>
+        <div class="fund-preview-row"><span class="fk">Est. mint gas</span><span class="fv" id="fp-mint-gas">—</span></div>
+        <div class="fund-preview-row"><span class="fk">Est. funding gas / wallet</span><span class="fv" id="fp-fund-gas">—</span></div>
+        <div class="fund-preview-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px"><span class="fk">Recommended target</span><span class="fv" id="fp-target">—</span></div>
+        <div class="fund-preview-row"><span class="fk">Total from master</span><span class="fv" id="fp-total">—</span></div>
+      </div>
+      <div id="ov-fund-msg" style="display:none"></div>
+      <button class="btn btn-outline" onclick="calcSmartFund()">🧮 Calculate Optimal</button>
+      <button class="btn btn-gold" onclick="autoBalance()">⚡ Auto-Fund All Wallets</button>
+      <div class="status-bar" id="ov-ab-status" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- MINT                                                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-mint">
+
+  <!-- Phase Inspector -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Phase Inspector</span>
+      <span class="badge badge-gold">REAL-TIME</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Contract Address</label>
+        <input class="input" id="pi-contract" placeholder="0x…" oninput="syncContract(this.value)"/>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="checkPhase()">🔍 Check Phase & Price</button>
+        <button class="btn btn-outline" onclick="autoDetectChain()" title="Scan all chains to find where this contract is deployed">🔎 Detect Chain</button>
+      </div>
+      <div id="pi-chain-detect" style="display:none;margin-top:6px"></div>
+      <div id="pi-results"></div>
+    </div>
+  </div>
+
+  <!-- Mint Engine -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Mint NFT</span>
+      <span class="badge badge-gold chain-pill-label" id="mint-chain-label">ETH</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Contract Address</label>
+        <input class="input" id="m-contract" placeholder="0x…"/>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Qty / Wallet</label>
+          <input class="input" id="m-qty" type="number" placeholder="1" min="1" max="100"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Price (ETH)</label>
+          <input class="input" id="m-price" type="number" placeholder="0.0006" step="0.0001"/>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Mint Function</label>
+          <input class="input" id="m-fn" placeholder="auto"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Gas Tip (gwei)</label>
+          <input class="input" id="m-gwei" placeholder="auto"/>
+        </div>
+      </div>
+
+      <!-- Proof Mode -->
+      <div class="field">
+        <label class="field-label">🔐 Proof Mode</label>
+        <select class="select" id="m-proof-mode" onchange="onMintProofModeChange()">
+          <option value="opensea">🌊 OpenSea / Seaport (Studio drops)</option>
+          <option value="none">🔓 None — public mint</option>
+          <option value="launchpad">🌐 Launchpad Auto-Proof</option>
+          <option value="seadrop">🌊 SeaDrop (legacy direct)</option>
+          <option value="auto">🤖 Auto detect</option>
+          <option value="single">🔑 Single merkle proof</option>
+          <option value="map">📋 Per-wallet proof JSON</option>
+          <option value="eip712">✍️ EIP-712 signature</option>
+          <option value="flashbots">🔒 Flashbots</option>
+        </select>
+      </div>
+
+      <div class="proof-panel" id="pp-single">
+        <div class="field">
+          <label class="field-label">Proof Leaves (comma-separated)</label>
+          <textarea class="textarea" id="m-proof" rows="2" placeholder="0xabc…,0xdef…"></textarea>
+        </div>
+      </div>
+      <div class="proof-panel" id="pp-map">
+        <div class="field">
+          <label class="field-label">Per-Wallet Proof JSON</label>
+          <textarea class="textarea" id="m-proof-map" rows="3" placeholder='{"0xAddr1":["0xleaf1"],"0xAddr2":["0xleaf2"]}'></textarea>
+        </div>
+      </div>
+      <div class="proof-panel" id="pp-eip712">
+        <div class="field">
+          <label class="field-label">EIP-712 Signatures JSON</label>
+          <textarea class="textarea" id="m-eip712" rows="2" placeholder='{"0xWallet1":"0xSig1"}'></textarea>
+          <span class="hint">Get sigs from mint site → DevTools → Network → XHR</span>
+        </div>
+      </div>
+
+      <!-- Wallet Selection -->
+      <div class="field">
+        <label class="field-label">Target Wallets</label>
+        <div class="wallet-sel-actions" style="margin-bottom:8px">
+          <button class="btn btn-outline btn-sm" onclick="selAll('m-wallet-select')">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselAll('m-wallet-select')">Deselect</button>
+        </div>
+        <div class="wallet-checklist" id="m-wallet-select"></div>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="m-dryrun"/>
+        <span>🧪 Dry run — simulate only, no tx broadcast</span>
+      </label>
+
+      <button class="btn btn-gold" id="m-btn" onclick="startExecFlow()">🔥 Mint Selected Wallets</button>
+      <div class="status-bar" id="m-status" style="display:none"></div>
+      <div id="m-results" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+
+  <!-- Eligibility Check -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">Wallet Eligibility</span></div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Contract (or use above)</label>
+        <input class="input" id="el-contract" placeholder="0x…"/>
+      </div>
+      <button class="btn btn-outline" onclick="checkEligibility()">✅ Check All Wallets</button>
+      <div id="el-results" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- SCHEDULE                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-schedule">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Schedule Mint</span>
+      <span class="badge badge-gold">SNIPER</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Mint Date & Time <span class="hint">(optional in Phase-poll mode)</span></label>
+        <input class="input" id="s-time" type="datetime-local" step="1"/>
+      </div>
+      <div class="field">
+        <label class="field-label">— or — Fire in <span style="color:var(--gold)">N seconds from now</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="input" id="s-delay-sec" type="number" placeholder="e.g. 30" min="1" style="max-width:120px"/>
+          <button type="button" class="btn btn-outline btn-sm" id="s-delay-set">Set Time</button>
+          <span id="s-delay-preview" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Contract</label>
+          <input class="input" id="s-contract" placeholder="0x…"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Qty / Wallet</label>
+          <input class="input" id="s-qty" type="number" placeholder="1" min="1"/>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Price (ETH)</label>
+          <input class="input" id="s-price" type="number" placeholder="0.0006" step="0.0001"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Gas Tip (gwei)</label>
+          <input class="input" id="s-gwei" placeholder="auto"/>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">🔐 Proof Mode</label>
+        <select class="select" id="s-proof-mode">
+          <option value="opensea">🌊 OpenSea / Seaport</option>
+          <option value="none">🔓 None — public mint</option>
+          <option value="launchpad">🌐 Launchpad Auto-Proof</option>
+          <option value="seadrop">🌊 SeaDrop</option>
+          <option value="auto">🤖 Auto detect</option>
+          <option value="single">🔑 Single merkle proof</option>
+          <option value="map">📋 Per-wallet proof JSON</option>
+          <option value="eip712">✍️ EIP-712 signature</option>
+          <option value="flashbots">🔒 Flashbots</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">Trigger Mode</label>
+        <select class="select" id="s-trigger">
+          <option value="time">⏰ At exact time</option>
+          <option value="phase">📡 Phase-poll (mint opens → auto fire)</option>
+          <option value="both">⏰+📡 Time + Phase-poll</option>
+        </select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Timeout (sec)</label>
+          <input class="input" id="s-timeout" type="number" placeholder="60" min="5"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Gas Escalate %</label>
+          <input class="input" id="s-gas-esc" type="number" placeholder="10" min="0"/>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Target Wallets</label>
+        <div class="wallet-sel-actions" style="margin-bottom:8px">
+          <button class="btn btn-outline btn-sm" onclick="selAll('s-wallet-select')">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselAll('s-wallet-select')">Deselect</button>
+        </div>
+        <div class="wallet-checklist" id="s-wallet-select"></div>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="s-dryrun"/>
+        <span>🧪 Dry run</span>
+      </label>
+      <button class="btn btn-gold" id="s-btn" onclick="doSchedule()">⏰ Schedule Mint</button>
+      <div class="status-bar" id="s-status" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Active Schedules</span>
+      <button class="btn btn-outline btn-sm" onclick="loadSchedules()">↻</button>
+    </div>
+    <div class="card-body" id="s-list">
+      <div class="empty">No active schedules</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Last Results</span>
+      <button class="btn btn-outline btn-sm" onclick="loadSchedResults()">↻</button>
+    </div>
+    <div class="card-body" id="sr-list">
+      <div class="empty">No results yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- NFT PORTFOLIO                                                     -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-nft">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">NFT Portfolio</span>
+      <button class="btn btn-outline btn-sm" onclick="loadNFTs()">↻ Refresh</button>
+    </div>
+    <div class="card-body" id="nft-list">
+      <div class="empty">Click refresh to load NFTs</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Quick List NFT</span></div>
+    <div class="card-body">
+      <div class="row2">
+        <div class="field"><label class="field-label">Contract</label><input class="input" id="list-contract" placeholder="0x…"/></div>
+        <div class="field"><label class="field-label">Token ID</label><input class="input" id="list-token" placeholder="42"/></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label class="field-label">Price (ETH)</label><input class="input" id="list-price" placeholder="0.05" step="0.001" type="number"/></div>
+        <div class="field">
+          <label class="field-label">Wallet</label>
+          <select class="select" id="list-wallet"></select>
+        </div>
+      </div>
+      <button class="btn btn-gold" onclick="doList()">📋 List on OpenSea</button>
+      <div class="status-bar" id="list-status" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Sweep Floor</span></div>
+    <div class="card-body">
+      <div class="row2">
+        <div class="field"><label class="field-label">Collection Slug</label><input class="input" id="sw-slug" placeholder="boredapeyachtclub"/></div>
+        <div class="field"><label class="field-label">Qty to Buy</label><input class="input" id="sw-qty" type="number" placeholder="2" min="1"/></div>
+      </div>
+      <div class="field"><label class="field-label">Max Price Each (ETH)</label><input class="input" id="sw-maxprice" placeholder="0.1" type="number" step="0.001"/></div>
+      <div class="field">
+        <label class="field-label">Wallet to Sweep With</label>
+        <select class="input" id="sw-wallet" style="background:var(--input-bg)">
+          <option value="">— Select wallet —</option>
+        </select>
+      </div>
+      <button class="btn btn-gold" onclick="doSweep()">🧹 Sweep Floor</button>
+      <div class="status-bar" id="sw-status" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- FUND                                                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-fund">
+  <div class="card">
+    <div class="card-head"><span class="card-title">Fund Wallets</span></div>
+    <div class="card-body">
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">ETH per Wallet</label>
+          <input class="input" id="f-amount" type="number" placeholder="0.005" step="0.001"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Chain</label>
+          <select class="select" id="f-chain">
+            <option value="1">Ethereum</option><option value="8453">Base</option><option value="10">Optimism</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option><option value="33139">ApeChain</option><option value="81457">Blast</option><option value="43114">Avalanche</option><option value="59144">Linea</option><option value="7777777">Zora</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Target Wallets</label>
+        <div class="wallet-sel-actions" style="margin-bottom:8px">
+          <button class="btn btn-outline btn-sm" onclick="selAll('f-wallet-select')">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselAll('f-wallet-select')">Deselect</button>
+        </div>
+        <div class="wallet-checklist" id="f-wallet-select"></div>
+      </div>
+      <button class="btn btn-gold" id="f-btn" onclick="doFund()">💸 Fund Selected Wallets</button>
+      <div class="status-bar" id="f-status" style="display:none"></div>
+      <div id="f-results" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- WALLETS                                                           -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-wallets">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Add Wallet</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Private Key</label>
+        <input class="input" id="w-pk" type="password" placeholder="0x… or without 0x"/>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label">Label</label>
+          <input class="input" id="w-label" placeholder="Wallet 4"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Spend Limit (ETH)</label>
+          <input class="input" id="w-limit" type="number" placeholder="optional" step="0.001"/>
+        </div>
+      </div>
+      <button class="btn btn-gold" onclick="addWallet()">+ Add Wallet</button>
+      <div class="status-bar" id="w-status" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Managed Wallets</span>
+      <button class="btn btn-outline btn-sm" onclick="loadWallets()">↻</button>
+    </div>
+    <div class="card-body" id="w-list">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- MASTER                                                            -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-master">
+  <div class="card">
+    <div class="card-head"><span class="card-title">Master Wallet</span><span class="badge badge-gold">HOT WALLET</span></div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Private Key</label>
+        <input class="input" id="mw-pk" type="password" placeholder="0x…"/>
+      </div>
+      <button class="btn btn-gold" onclick="setMaster()">Set Master Wallet</button>
+      <div class="status-bar" id="mw-status" style="display:none"></div>
+      <div class="divider"></div>
+      <div id="mw-info"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Collect Funds</span></div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Chain</label>
+        <select class="select" id="collect-chain">
+          <option value="1">Ethereum</option><option value="8453">Base</option><option value="10">Optimism</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option><option value="33139">ApeChain</option><option value="81457">Blast</option><option value="43114">Avalanche</option><option value="59144">Linea</option><option value="7777777">Zora</option>
+        </select>
+      </div>
+      <button class="btn btn-outline" onclick="collectFunds()">🏦 Collect All → Master</button>
+      <div class="status-bar" id="collect-status" style="display:none"></div>
+      <div id="collect-results" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- HISTORY                                                           -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-history">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Mint History</span>
+      <button class="btn btn-outline btn-sm" onclick="loadHistory()">↻</button>
+    </div>
+    <div class="card-body" id="history-list">
+      <div class="empty">No history yet</div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+// ── Tab routing ────────────────────────────────────────────────────
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const page = document.getElementById('page-' + tab.dataset.page);
+    if (page) {
+      page.classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      if (tab.dataset.page === 'overview') loadOverview();
+      if (tab.dataset.page === 'mint') loadWalletChecks('m-wallet-select');
+      if (tab.dataset.page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
+      if (tab.dataset.page === 'fund') loadWalletChecks('f-wallet-select');
+      if (tab.dataset.page === 'nft') { loadNFTs(); populateListWallet(); }
+      if (tab.dataset.page === 'wallets') loadWallets();
+      if (tab.dataset.page === 'history') loadHistory();
+      if (tab.dataset.page === 'master') loadMasterInfo();
+    }
+  });
+});
+
+// ── Mobile bottom-nav fallback: switch page directly by name ──────
+// Used when the desktop tab bar is hidden (small screens) — mirrors the
+// same page-load logic as the desktop tab click handler above.
+function switchPage(page) {
+  const desktopTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+  if (desktopTab) { desktopTab.click(); return; }
+  // Fallback: direct switch if desktop nav hidden
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + page);
+  if (target) { target.classList.add('active'); window.scrollTo({ top: 0, behavior: 'instant' }); }
+  if (page === 'overview') loadOverview();
+  if (page === 'mint') loadWalletChecks('m-wallet-select');
+  if (page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
+  if (page === 'fund') loadWalletChecks('f-wallet-select');
+  if (page === 'nft') { loadNFTs(); populateListWallet(); }
+  if (page === 'wallets') loadWallets();
+  if (page === 'history') loadHistory();
+  if (page === 'master') loadMasterInfo();
+}
+
+// ── Boot: load wallets + dropdowns, then auto-refresh every 30s ───
+(async () => {
+  try { await loadWallets(); } catch {}
+  setInterval(async () => {
+    try { await loadWallets(); } catch {}
+  }, 30000);
+})();
+
+// ── Proof mode panel toggle ────────────────────────────────────────
+function onMintProofModeChange() {
+  const v = document.getElementById('m-proof-mode').value;
+  document.getElementById('pp-single').classList.toggle('show', v === 'single');
+  document.getElementById('pp-map').classList.toggle('show', v === 'map');
+  document.getElementById('pp-eip712').classList.toggle('show', v === 'eip712');
+}
+
+// ── Sync contract field from phase inspector ───────────────────────
+function syncContract(v) {
+  document.getElementById('m-contract').value = v;
+  document.getElementById('el-contract').value = v;
+}
+
+// ── Wallet checklist loader ────────────────────────────────────────
+async function loadWalletChecks(containerId, chainId) {
+  const cid = chainId || currentChainId || 1;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  try {
+    const data = await api('/api/wallets?chainId=' + cid);
+    const wallets = data.wallets || [];
+    container.innerHTML = wallets.length ? wallets.map(w => `
+      <label class="wallet-check-item" id="wci-${containerId}-${w.address}">
+        <input type="checkbox" checked value="${w.address}" onchange="this.closest('.wallet-check-item').classList.toggle('checked',this.checked)"/>
+        <div class="wallet-check-info">
+          <div class="wallet-check-label">${w.label||'Wallet'}</div>
+          <div class="wallet-check-addr">${w.address.slice(0,10)}…${w.address.slice(-6)}</div>
+        </div>
+        <div class="wallet-check-bal">${w.balance ? parseFloat(w.balance).toFixed(5) : '—'}</div>
+      </label>`).join('') : '<div class="empty">No wallets loaded</div>';
+    container.querySelectorAll('.wallet-check-item').forEach(el => {
+      if (el.querySelector('input:checked')) el.classList.add('checked');
+    });
+  } catch(e) { container.innerHTML = `<div class="empty" style="color:var(--red)">Failed to load wallets</div>`; }
+}
+
+function selAll(id) {
+  document.querySelectorAll(`#${id} input[type=checkbox]`).forEach(cb => { cb.checked = true; cb.closest('.wallet-check-item').classList.add('checked'); });
+}
+function deselAll(id) {
+  document.querySelectorAll(`#${id} input[type=checkbox]`).forEach(cb => { cb.checked = false; cb.closest('.wallet-check-item').classList.remove('checked'); });
+}
+
+function getChecked(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)].map(cb => cb.value);
+}
+
+// ── Phase Inspector ────────────────────────────────────────────────
+// Chain name map for display
+const CHAIN_NAMES = { 1:'Ethereum',8453:'Base',10:'Optimism',137:'Polygon',42161:'Arbitrum',56:'BNB Chain',33139:'ApeChain',81457:'Blast',43114:'Avalanche',59144:'Linea',7777777:'Zora' };
+
+async function autoDetectChain() {
+  const contract = document.getElementById('pi-contract').value.trim();
+  if (!contract) { toast('Enter a contract address first', 'red'); return; }
+  const box = document.getElementById('pi-chain-detect');
+  box.style.display = '';
+  box.innerHTML = '<span style="color:var(--text2)">🔎 Scanning all chains…</span>';
+  try {
+    const data = await api('/api/detect-chain?contract=' + contract);
+    if (!data.chains || data.chains.length === 0) {
+      box.innerHTML = '<div class="result-err">⚠️ Contract not found on any configured chain. Check the address.</div>';
+      return;
+    }
+    box.innerHTML = data.chains.map(c => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--green)">✅</span>
+        <span style="font-weight:600">${c.name || CHAIN_NAMES[c.chainId] || 'Chain '+c.chainId}</span>
+        <span style="color:var(--text2);font-size:11px">chainId: ${c.chainId}</span>
+        <button class="btn btn-outline" style="padding:2px 10px;font-size:11px;margin-left:auto"
+          onclick="switchToChain(${c.chainId})">Switch & Use</button>
+      </div>`).join('');
+    if (data.chains.length === 1) {
+      const warning = data.chains[0].chainId !== (currentChainId || 1)
+        ? `<div style="color:var(--gold);font-size:12px;margin-top:4px">⚠️ You're on ${CHAIN_NAMES[currentChainId||1]||currentChainId} but this contract is on <b>${data.chains[0].name}</b>. Click "Switch & Use" to fix.</div>`
+        : '<div style="color:var(--green);font-size:12px;margin-top:4px">✅ Chain matches your current selection.</div>';
+      box.innerHTML += warning;
+    }
+  } catch(e) { box.innerHTML = `<div class="result-err">Detect failed: ${e.message}</div>`; }
+}
+
+function switchToChain(chainId) {
+  currentChainId = chainId;
+  const sel = document.getElementById('chain-select');
+  if (sel) { sel.value = chainId; sel.dispatchEvent(new Event('change')); }
+  toast(`Switched to ${CHAIN_NAMES[chainId]||'chain '+chainId}`, 'green');
+}
+
+async function checkPhase() {
+  const contract = document.getElementById('pi-contract').value.trim();
+  if (!contract) { toast('Enter a contract address', 'red'); return; }
+  const el = document.getElementById('pi-results');
+  el.innerHTML = '<div class="status-bar loading" style="margin-top:8px"><span class="spin">↻</span> Checking phase…</div>';
+  try {
+    const data = await api(`/api/phase?contract=${contract}&chainId=${currentChainId||1}`);
+    const p = data.phase || {};
+    const badge = p.phase === 'PUBLIC' ? 'badge-green' : p.phase === 'WL' ? 'badge-blue' : 'badge-red';
+
+    // ── 5-per-wallet alert ─────────────────────────────────────────
+    const walletLimitAlert = (p.maxPerWallet && parseInt(p.maxPerWallet) > 0)
+      ? `<div style="background:rgba(232,184,75,.1);border:1px solid rgba(232,184,75,.3);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px;color:var(--gold)">
+          ⚠️ <strong>${p.maxPerWallet} mint${parseInt(p.maxPerWallet)>1?'s':''} max per wallet</strong> — set QTY to max ${p.maxPerWallet} and split across wallets.
+         </div>`
+      : '';
+
+    // ── Chain mismatch alert ───────────────────────────────────────
+    const detectedChain = data.detectedChainId || data.chainId;
+    const chainMismatch = detectedChain && parseInt(detectedChain) !== parseInt(currentChainId||1);
+    const chainMismatchAlert = chainMismatch
+      ? `<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px;color:#e08080">
+          🔴 <strong>Wrong chain!</strong> Contract is on chain ${detectedChain} but you're on ${currentChainId}. Switch chain before minting or you'll get 405 errors.
+         </div>`
+      : '';
+
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:0;margin-top:10px">
+      <div class="phase-row"><span class="phase-key">Phase</span><span class="badge ${badge}">${p.phase||'UNKNOWN'}</span></div>
+      <div class="phase-row"><span class="phase-key">Price</span><span class="phase-val">${p.mintPrice||'—'} ETH</span></div>
+      <div class="phase-row"><span class="phase-key">Max/Wallet</span><span class="phase-val" style="${p.maxPerWallet?'color:var(--gold);font-weight:700':''}">${p.maxPerWallet||'—'}</span></div>
+      <div class="phase-row"><span class="phase-key">Supply</span><span class="phase-val">${p.supply||'—'}</span></div>
+      <div class="phase-row"><span class="phase-key">Confidence</span><span class="phase-val" style="color:var(--muted)">${p.confidence||'—'}</span></div>
+      ${p.reason ? `<div class="phase-row"><span class="phase-key">Note</span><span class="hint">${p.reason.slice(0,120)}</span></div>` : ''}
+      ${walletLimitAlert}
+      ${chainMismatchAlert}
+    </div>`;
+    // Auto-fill price and qty
+    if (p.mintPrice) document.getElementById('m-price').value = p.mintPrice;
+    if (p.maxPerWallet && parseInt(p.maxPerWallet) > 0) {
+      const qtyEl = document.getElementById('m-qty');
+      if (qtyEl && (!qtyEl.value || qtyEl.value === '1')) qtyEl.value = p.maxPerWallet;
+    }
+    // Block mint button if wrong chain
+    const mintBtn = document.getElementById('m-btn');
+    if (mintBtn && chainMismatch) {
+      mintBtn.disabled = true;
+      mintBtn.title = `Switch to chain ${detectedChain} first`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="status-bar err" style="margin-top:8px">❌ ${e.message}</div>`;
+  }
+}
+
+// ── Eligibility ────────────────────────────────────────────────────
+async function checkEligibility() {
+  const contract = document.getElementById('el-contract').value.trim() || document.getElementById('m-contract').value.trim();
+  if (!contract) { toast('Enter contract address', 'red'); return; }
+  const el = document.getElementById('el-results');
+  el.innerHTML = '<div class="status-bar loading"><span class="spin">↻</span> Checking…</div>';
+  try {
+    const data = await api('/api/eligibility', { method:'POST', body:JSON.stringify({ contractAddress:contract, chainId:currentChainId||1 }) });
+    const results = data.results || [];
+    el.innerHTML = results.length ? results.map(r => {
+      const ok = r.eligible;
+      return `<div class="result-item">
+        <div class="result-icon">${ok ? '✅' : '❌'}</div>
+        <div class="result-body">
+          <span class="result-status" style="color:${ok?'var(--green)':'var(--red)'}">${(r.walletAddress||r.address||"").slice(0,12)}…</span>
+          <div class="result-addr">${r.reason||''}</div>
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty">No results</div>';
+  } catch(e) { el.innerHTML = `<div class="status-bar err">❌ ${e.message}</div>`; }
+}
+
+// ── loadOverview ───────────────────────────────────────────────────
+async function loadOverview() {
+  try {
+    const [wdata, sdata] = await Promise.all([
+      api('/api/wallets?chainId=' + (currentChainId||1)),
+      api('/api/schedules').catch(() => ({ schedules: {} }))
+    ]);
+    const wallets = wdata.wallets || [];
+    const totalBal = wallets.reduce((s, w) => s + parseFloat(w.balance||0), 0);
+    document.getElementById('ov-wallets').textContent = wallets.length;
+    document.getElementById('ov-total').textContent = totalBal.toFixed(5);
+    document.getElementById('ov-schedules').textContent = Object.keys(sdata.schedules||{}).length;
+    const wList = document.getElementById('ov-wallet-list');
+    wList.innerHTML = wallets.length ? wallets.map(w => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:12px">${w.label||'Wallet'}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${w.address.slice(0,14)}…</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--gold)">${parseFloat(w.balance||0).toFixed(5)} ETH</div>
+      </div>`).join('') : '<div class="empty">No wallets</div>';
+  } catch(e) {}
+}
+
+async function loadMasterInfo() {
+  try {
+    const data = await api('/api/master?chainId=' + (currentChainId||1));
+    document.getElementById('ov-master').textContent = data.balance ? parseFloat(data.balance).toFixed(5) : '—';
+    const el = document.getElementById('mw-info');
+    if (el) el.innerHTML = data.address ? `
+      <div class="phase-row"><span class="phase-key">Address</span><code>${data.address.slice(0,16)}…</code></div>
+      <div class="phase-row"><span class="phase-key">Balance</span><span class="phase-val">${parseFloat(data.balance||0).toFixed(5)} ETH</span></div>
+    ` : '';
+  } catch(e) {}
+}
+
+// ── History ────────────────────────────────────────────────────────
+async function loadHistory() {
+  const el = document.getElementById('history-list');
+  try {
+    const data = await api('/api/mint-history');
+    const sessions = data.sessions || [];
+    if (!sessions.length) { el.innerHTML = '<div class="empty">No mint history yet</div>'; return; }
+    el.innerHTML = sessions.slice().reverse().map(s => {
+      const ok = (s.results||[]).filter(r=>r.status==='success').length;
+      const total = (s.results||[]).length;
+      return `<div class="history-row">
+        <div>
+          <div style="font-weight:600;font-size:12px">${s.collectionName||s.contractAddress?.slice(0,12)+'…'}</div>
+          <div class="hint" style="margin-top:1px">${new Date(s.timestamp||0).toLocaleString()}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge ${ok>0?'badge-green':'badge-red'}">${ok}/${total} OK</span>
+          ${s.dryRun ? '<span class="badge badge-blue" style="margin-left:4px">DRY</span>' : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`; }
+}
+
+// ── Load schedules ─────────────────────────────────────────────────
+async function loadSchedules() {
+  const el = document.getElementById('s-list');
+  const rel = document.getElementById('sr-list');
+  try {
+    const data = await api('/api/schedules');
+    const scheds = Object.values(data.schedules||{});
+    el.innerHTML = scheds.length ? scheds.map(s => `
+      <div class="sched-item">
+        <div class="sched-dot"></div>
+        <div class="sched-info">
+          <div style="font-weight:600;font-size:12px">${s.contractAddress?.slice(0,14)}…</div>
+          <div class="sched-contract">${s.mintTime ? new Date(s.mintTime).toLocaleString() : 'Phase-poll'} · qty ${s.quantity}</div>
+        </div>
+        <button class="sched-cancel" onclick="cancelSchedule('${s.scheduleId}')">✕</button>
+      </div>`).join('') : '<div class="empty">No active schedules</div>';
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${e.message}</div>`; }
+
+  try {
+    // FIX v19: was /api/schedule-results — server has /api/schedules/results
+    const rdata = await api('/api/schedules/results');
+    const results = rdata.results || [];
+    rel.innerHTML = results.length ? results.map(r => {
+      const ok = r.status === 'success' || r.status === 'dry-run-ok';
+      return `<div class="result-item">
+        <div class="result-icon">${ok?'✅':r.status==='skipped'?'⏭':'❌'}</div>
+        <div class="result-body">
+          <div class="result-addr">${(r.walletAddress||r.address||"").slice(0,12)}…</div>
+          <div class="result-status" style="color:${ok?'var(--green)':'var(--red)'}">${r.status}</div>
+          ${r.txHash?`<div class="result-tx"><a href="#" target="_blank">🔗 ${r.txHash.slice(0,14)}…</a></div>`:''}
+          ${r.error?`<div class="result-err">${r.error.slice(0,160)}</div>`:''}
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty">No results yet</div>';
+  } catch(e) {}
+}
+
+async function cancelSchedule(id) {
+  try {
+    // FIX v19: was /api/schedule/:id — server has /api/schedules/:id
+    await api('/api/schedules/' + id, { method:'DELETE' });
+    toast('Schedule cancelled', 'green');
+    loadSchedules();
+  } catch(e) { toast('Cancel failed: ' + e.message, 'red'); }
+}
+
+// ── Load wallets page ──────────────────────────────────────────────
+async function loadWallets() {
+  const el = document.getElementById('w-list');
+  try {
+    const data = await api('/api/wallets?chainId=' + (currentChainId||1));
+    const wallets = data.wallets || [];
+    el.innerHTML = wallets.length ? wallets.map((w,i) => `
+      <div class="result-item" style="align-items:center">
+        <div class="result-body" style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px">${w.label||'Wallet '+(i+1)}</div>
+          <div class="result-addr" style="word-break:break-all">${w.address}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:2px">${parseFloat(w.balance||0).toFixed(5)} ETH</div>
+          ${w.spendLimit!=null?`<div class="hint">Limit: ${w.spendLimit} ETH</div>`:''}
+        </div>
+        <button class="btn btn-danger btn-sm" style="flex-shrink:0;margin-left:8px" onclick="removeWallet('${w.address}')">Remove</button>
+      </div>`).join('') : '<div class="empty">No wallets added yet</div>';
+
+    // FIX: also refresh master balance dashboard tile
+    const master = await api('/api/master-balance?chainId=' + (currentChainId||1)).catch(()=>null);
+    if (master) {
+      const mb = document.getElementById('dash-master-bal');
+      if (mb) mb.textContent = parseFloat(master.balance||0).toFixed(5);
+    }
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }
+  // Always refresh dropdowns after wallet list updates
+  populateListWallet();
+  loadWalletChecks('f-wallet-select', currentChainId);
+}
+
+async function addWallet() {
+  const pk = document.getElementById('w-pk').value.trim();
+  const label = document.getElementById('w-label').value.trim();
+  const limit = parseFloat(document.getElementById('w-limit').value) || null;
+  if (!pk) { toast('Enter a private key', 'red'); return; }
+  const st = document.getElementById('w-status');
+  setStatus(st, '⏳ Adding…', 'loading');
+  try {
+    await api('/api/wallets', { method:'POST', body: JSON.stringify({ privateKey:pk, label:label||null, spendLimit:limit }) });
+    setStatus(st, '✅ Wallet added', 'ok');
+    document.getElementById('w-pk').value = '';
+    document.getElementById('w-label').value = '';
+    loadWallets();
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+
+async function removeWallet(addr) {
+  if (!confirm('Remove wallet ' + addr.slice(0,12) + '?')) return;
+  try {
+    await api('/api/wallets/' + addr, { method:'DELETE' });
+    toast('Wallet removed', 'green');
+    loadWallets();
+  } catch(e) { toast(e.message, 'red'); }
+}
+
+async function populateListWallet() {
+  const selList  = document.getElementById('list-wallet');
+  const selSweep = document.getElementById('sw-wallet');
+  try {
+    const data = await api('/api/wallets?chainId=' + (currentChainId||1));
+    const opts = (data.wallets||[]).map(w => `<option value="${w.address}">${w.label||w.address.slice(0,14)+'…'}</option>`).join('');
+    if (selList)  selList.innerHTML  = opts || '<option value="">No wallets</option>';
+    if (selSweep) selSweep.innerHTML = '<option value="">— Select wallet —</option>' + opts;
+  } catch(e) {}
+}
+
+// ── Fund wallets ───────────────────────────────────────────────────
+async function doFund() {
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const chainId = parseInt(document.getElementById('f-chain').value)||1;
+  const wallets = getChecked('f-wallet-select');
+  if (!amount || amount <= 0) { toast('Enter ETH amount', 'red'); return; }
+  if (!wallets.length) { toast('Select wallets', 'red'); return; }
+  const st = document.getElementById('f-status');
+  const rel = document.getElementById('f-results');
+  rel.innerHTML = '';
+  document.getElementById('f-btn').disabled = true;
+  setStatus(st, `⏳ Funding ${wallets.length} wallet(s) with ${amount} ETH each…`, 'loading');
+  try {
+    // FIX v19: server expects amountEthEach (not amountEth) and walletAddresses (not walletFilter)
+    const data = await api('/api/fund', { method:'POST', body: JSON.stringify({ amountEthEach: amount, chainId, walletAddresses: wallets }) });
+    const ok = (data.results||[]).filter(r => r.status === 'funded').length;
+    setStatus(st, `✅ ${ok}/${(data.results||[]).length} wallets funded`, 'ok');
+    rel.innerHTML = (data.results||[]).map(r => buildResultCard(r, chainId)).join('');
+    loadOverview();
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+  document.getElementById('f-btn').disabled = false;
+}
+
+async function autoBalance() {
+  const target = parseFloat(document.getElementById('ov-target').value);
+  const chainId = parseInt(document.getElementById('ov-ab-chain').value)||1;
+  const mintPrice = parseFloat(document.getElementById('ov-mint-price')?.value) || 0;
+  const qty = parseInt(document.getElementById('ov-mint-qty')?.value) || 1;
+
+  // Smart gate: if target not set but mint price is, auto-calculate
+  let finalTarget = target;
+  if ((!finalTarget || finalTarget <= 0) && mintPrice > 0) {
+    await calcSmartFund();
+    finalTarget = parseFloat(document.getElementById('ov-target').value);
+  }
+
+  if (!finalTarget || finalTarget <= 0) {
+    toast('Enter mint price or set a target manually, then click Calculate Optimal first', 'red'); return;
+  }
+
+  // Warn if target seems excessive relative to mint cost
+  const mintCost = mintPrice * qty;
+  if (mintCost > 0 && finalTarget > mintCost * 3) {
+    const sym = (CHAINS[chainId]||CHAINS[1]).symbol;
+    if (!confirm(`⚠️ Target ${finalTarget} ${sym} is ${(finalTarget/mintCost).toFixed(1)}x the mint cost (${mintCost} ${sym}). This wastes ETH on funding gas.\n\nRecommended: ${(mintCost + estMintGas(chainId)*1.3).toFixed(5)} ${sym}\n\nContinue anyway?`)) return;
+  }
+
+  const st = document.getElementById('ov-ab-status');
+  st.style.display = 'flex';
+  setStatus(st, '⏳ Auto-funding…', 'loading');
+  try {
+    const data = await api('/api/wallets/auto-balance', { method:'POST', body: JSON.stringify({ targetEth:finalTarget, minEth: parseFloat((finalTarget * 0.85).toFixed(6)), chainId }) });
+    const results = data.results || [];
+    const toppedUp  = results.filter(r=>r.status==='topped_up').length;
+    const sufficient = results.filter(r=>r.status==='sufficient').length;
+    const failed    = results.filter(r=>r.status==='failed'||r.status==='master_insufficient').length;
+    setStatus(st, `✅ Done — ${toppedUp} funded, ${sufficient} OK, ${failed} failed`, 'ok');
+    loadOverview();
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+// FIX (Bug 5): Removed stray extra '}' that was here — it caused a SyntaxError
+// that silently prevented all JS below (setMaster, collectFunds, doList, doSweep)
+// from being parsed, making Fund/Master/NFT features completely non-functional.
+
+// ── Master wallet ──────────────────────────────────────────────────
+async function setMaster() {
+  const pk = document.getElementById('mw-pk').value.trim();
+  if (!pk) { toast('Enter private key', 'red'); return; }
+  const st = document.getElementById('mw-status');
+  setStatus(st, '⏳ Setting…', 'loading');
+  try {
+    // FIX v19: POST /api/master doesn't exist — server has /api/master/set
+    await api('/api/master/set', { method:'POST', body: JSON.stringify({ privateKey:pk }) });
+    setStatus(st, '✅ Master wallet set', 'ok');
+    document.getElementById('mw-pk').value = '';
+    loadMasterInfo();
+    loadOverview();
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+
+async function collectFunds() {
+  const chainId = parseInt(document.getElementById('collect-chain').value)||1;
+  const st = document.getElementById('collect-status');
+  const rel = document.getElementById('collect-results');
+  rel.innerHTML = '';
+  setStatus(st, '⏳ Collecting funds to master…', 'loading');
+  try {
+    // FIX v19: /api/collect doesn't exist — server has /api/drain
+    const data = await api('/api/drain', { method:'POST', body: JSON.stringify({ chainId }) });
+    const ok = (data.results||[]).filter(r=>r.status==='drained').length;
+    setStatus(st, `✅ Collected from ${ok}/${(data.results||[]).length} wallets`, 'ok');
+    rel.innerHTML = (data.results||[]).map(r => buildResultCard(r, chainId)).join('');
+    loadOverview();
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+
+// ── NFT ────────────────────────────────────────────────────────────
+async function loadNFTs() {
+  const el = document.getElementById('nft-list');
+  el.innerHTML = '<div class="status-bar loading"><span class="spin">↻</span> Loading NFTs…</div>';
+  try {
+    // FIX v19: /api/nfts requires walletAddress param (returns 400 without it)
+    // Use /api/nfts/all which aggregates across all configured wallets
+    const data = await api('/api/nfts/all?chainId=' + (currentChainId||1));
+    const nfts = data.nfts || [];
+    el.innerHTML = nfts.length ? `<div class="nft-portfolio-scroll"><div class="nft-grid">` + nfts.map(n => `
+      <div class="nft-card">
+        <div class="nft-thumb">${n.imageUrl||n.image_url ? `<img src="${n.imageUrl||n.image_url}" loading="lazy"/>` : '🖼'}</div>
+        <div class="nft-meta">
+          <div class="nft-name">${n.name||'#'+(n.tokenId||n.identifier)}</div>
+          <div class="nft-detail">${(n.contract||n.contractAddress||'').slice(0,10)}… · #${n.tokenId||n.identifier}</div>
+          <div class="nft-detail" style="margin-top:2px;color:var(--gold)">${n.walletLabel||n.wallet?.slice(0,10)||''}</div>
+        </div>
+        <button class="nft-list-btn" onclick="prefillList('${n.contract||n.contractAddress}','${n.tokenId||n.identifier}')">List</button>
+      </div>`).join('') + `</div></div>` : '<div class="empty">No NFTs found on this chain</div>';
+    const cnt = document.getElementById('nft-count');
+    if (cnt) cnt.textContent = data.count || nfts.length;
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }
+}
+
+function prefillList(contract, tokenId) {
+  document.getElementById('list-contract').value = contract;
+  document.getElementById('list-token').value = tokenId;
+}
+
+async function doList() {
+  const contract = document.getElementById('list-contract').value.trim();
+  const tokenId = document.getElementById('list-token').value.trim();
+  const price = parseFloat(document.getElementById('list-price').value);
+  const wallet = document.getElementById('list-wallet').value;
+  if (!contract || !tokenId || !price || !wallet) { toast('Fill all fields', 'red'); return; }
+  const st = document.getElementById('list-status');
+  setStatus(st, '⏳ Listing…', 'loading');
+  try {
+    // FIX v19: was /api/list — server has /api/nfts/list
+    const data = await api('/api/nfts/list', { method:'POST', body:JSON.stringify({ contractAddress:contract, tokenId, priceEth:price, walletAddress:wallet, chainId:currentChainId||1 }) });
+    setStatus(st, '✅ Listed on OpenSea', 'ok');
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+
+async function doSweep() {
+  const slug = document.getElementById('sw-slug').value.trim();
+  const qty = parseInt(document.getElementById('sw-qty').value)||1;
+  const max = parseFloat(document.getElementById('sw-maxprice').value)||0;
+  const wallet = document.getElementById('sw-wallet').value;
+  if (!slug) { toast('Enter collection slug', 'red'); return; }
+  if (!wallet) { toast('Select a wallet to sweep with', 'red'); return; }
+  const st = document.getElementById('sw-status');
+  setStatus(st, '⏳ Sweeping…', 'loading');
+  try {
+    const data = await api('/api/nfts/sweep', { method:'POST', body:JSON.stringify({ slug, quantity:qty, maxPriceEth:max||null, walletAddress:wallet, chainId:currentChainId||1 }) });
+    setStatus(st, `✅ Swept ${data.purchased||0} NFTs`, 'ok');
+  } catch(e) { setStatus(st, '❌ ' + e.message, 'err'); }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function buildResultCard(r, chainId) {
+  const chains = { 1:'https://etherscan.io', 8453:'https://basescan.org', 10:'https://optimistic.etherscan.io', 137:'https://polygonscan.com', 42161:'https://arbiscan.io', 56:'https://bscscan.com', 33139:'https://apescan.io', 81457:'https://blastscan.io', 43114:'https://snowtrace.io', 59144:'https://lineascan.build', 7777777:'https://explorer.zora.energy' };
+  const explorer = chains[chainId] || chains[1];
+  const addr = r.walletAddress || r.address || '';   // FIX: fund API returns .address, mint returns .walletAddress
+  const ok = r.status === 'success' || r.status === 'dry-run-ok';
+  const icon = r.status === 'success' ? '✅' : r.status === 'dry-run-ok' ? '🧪' : r.status === 'skipped' ? '⏭' : '❌';
+  return `<div class="result-item">
+    <div class="result-icon">${icon}</div>
+    <div class="result-body">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="result-addr">${addr ? addr.slice(0,12)+'…' : '—'}</span>
+        <span class="result-status" style="color:${ok?'var(--green)':'var(--red)'}">${r.status}</span>
+        ${r.txHash?`<a class="result-tx" href="${explorer}/tx/${r.txHash}" target="_blank">🔗 tx</a>`:''}
+        ${r.fn?`<code>${r.fn}</code>`:''}
+      </div>
+      ${r.gasCostEth?`<div class="result-gas">⛽ ${parseInt(r.gasUsed||0).toLocaleString()} gas · ${parseFloat(r.gasCostEth).toFixed(6)} ETH</div>`:''}
+      ${r.phaseContext?`<div class="hint" style="margin-top:3px">🔍 ${r.phaseContext}</div>`:''}
+      ${r.error?`<div class="result-err">${r.error.slice(0,200)}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function setStatus(el, msg, type) {
+  if (typeof el === 'string') el = document.getElementById(el);
+  if (!el) return;
+  el.style.display = 'flex';
+  el.className = `status-bar ${type}`;
+  el.innerHTML = type === 'loading' ? `<span class="spin">↻</span> ${msg}` : msg;
+}
+
+// Init
+loadOverview();
+loadMasterInfo();
+loadWalletChecks('m-wallet-select');
+</script>
+<!-- ─── MOBILE BOTTOM TAB BAR ─────────────────────────────────────── -->
+</body>
+</html>

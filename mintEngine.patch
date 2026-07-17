@@ -1,0 +1,106 @@
+--- a/src/core/mintEngine.js
++++ b/src/core/mintEngine.js
+@@ -78,11 +78,17 @@
+ ];
+ 
+ const MINT_FN_PRIORITY_721 = [
+-  'mintSigned',  // SeaDrop/OpenSea-drop EIP-712 — detected first if ABI has it
++  // FIX (v25): mintSigned used to sit FIRST here, so any SeaDrop/OpenSea
++  // Studio contract — which exposes mintSigned() on essentially every
++  // drop, signature-gated or not — got routed into the signed-mint path
++  // even during a fully public, signature-free phase. mintSigned now
++  // sits last: it's only chosen when nothing else on the ABI works, or
++  // when explicitly requested. See the routing gate in mintFromWallet().
+   'publicMint', 'mintPublic', 'mint', 'buy', 'mintNFT', 'batchMint',
+   'claim', 'purchase', 'allowlistMint', 'presaleMint', 'mintWithProof',
+   'whitelistMint', 'mintWithSignature', 'mintAllowance',
+   'freeMint', 'teamMint', 'mintTo', 'safeMint',
++  'mintSigned',  // SeaDrop/OpenSea-drop EIP-712 — last resort, needs a real signature
+ ];
+ const MINT_FN_PRIORITY_1155 = ['mint', 'purchase', 'claim', 'mintBatch'];
+ 
+@@ -512,21 +518,46 @@
+   const { contract, abiJson } = await getContractWithABI(contractAddress, signer, chainId, detectedStandard);
+   const hasProof = resolvedProof.length > 0 || !!resolvedSig;
+ 
+-  // ── mintSigned detection & routing ───────────────────────────────────────
+-  // Detect before normal function resolution so we don't accidentally call
+-  // publicMint on a contract that only exposes mintSigned.
+-  const mintSignedEntry = abiJson ? getMintSignedAbiEntry(abiJson) : null;
+-  const usesMintSigned  = mintSignedEntry
+-    ? true
+-    : (!abiJson && contractHasMintSigned(contract));
+-
+-  if (usesMintSigned && !customFn) {
+-    logger.info(`[mintSigned] Detected on ${contractAddress.slice(0, 10)} — fetching EIP-712 sig`);
+-    let sigResult = null;
+-    try {
+-      sigResult = await autoFetchMintSignedSig(contractAddress, walletAddress, chainId);
+-    } catch (e) {
+-      logger.warn(`[mintSigned] sig fetch error: ${e.message.slice(0, 80)}`);
++  // ── mintSigned routing ───────────────────────────────────────────────────
++  // FIX (v25) — this was the root cause of the "fn: mintSigned / No sig
++  // fetched" failures on every wallet. SeaDrop / OpenSea Studio contracts
++  // expose mintSigned() in their ABI on essentially every drop, whether or
++  // not the *currently live* phase actually needs a signature. The old
++  // code treated "ABI contains mintSigned" as "this wallet must use
++  // mintSigned" and intercepted EVERY mint attempt before normal function
++  // detection ever ran — including fully public, signature-free phases
++  // (like Beerz's "Public stage") that just needed mintPublic().
++  //
++  // Now: mintSigned is only used when (a) you explicitly ask for it via
++  // the custom-function field, (b) you've supplied a real signature you
++  // obtained yourself (resolvedSig — see the EIP-712 field in the UI/bot),
++  // or (c) the contract genuinely has no other payable mint function at
++  // all. In every other case, normal detection runs and picks the real
++  // public function — no guessing involved.
++  const mintSignedEntry  = abiJson ? getMintSignedAbiEntry(abiJson) : null;
++  const abiHasMintSigned = !!mintSignedEntry || (!abiJson && contractHasMintSigned(contract));
++  const otherCandidates  = abiJson ? findMintFunctions(abiJson, detectedStandard).filter(f => f.name !== 'mintSigned') : [];
++  const mintSignedIsOnlyOption = abiHasMintSigned && !!abiJson && otherCandidates.length === 0;
++  const wantsMintSigned  = customFn === 'mintSigned';
++
++  const usesMintSigned = customFn
++    ? wantsMintSigned
++    : (abiHasMintSigned && (mintSignedIsOnlyOption || !!resolvedSig));
++
++  if (usesMintSigned) {
++    const routingReason = resolvedSig ? 'signature supplied' : wantsMintSigned ? 'explicitly requested' : 'only payable mint fn on this contract';
++    logger.info(`[mintSigned] Using signed-mint path on ${contractAddress.slice(0, 10)} (${routingReason})`);
++
++    // No auto-fetch guessing — see mintSignedEngine.js. This only resolves
++    // a signature from (1) one you supplied yourself, or (2) an explicitly
++    // configured MINT_SIGNED_API_URL for this specific project.
++    let sigResult = resolvedSig ? { sig: resolvedSig, mintParams: null, salt: null, feeRecipient: ethers.ZeroAddress } : null;
++    if (!sigResult) {
++      try {
++        sigResult = await autoFetchMintSignedSig(contractAddress, walletAddress, chainId);
++      } catch (e) {
++        logger.warn(`[mintSigned] sig fetch error: ${e.message.slice(0, 80)}`);
++      }
+     }
+ 
+     // Attempt to get phase info for fallback mintParams
+@@ -570,11 +601,11 @@
+           value: ethers.formatEther(value),
+           standard: detectedStandard,
+           hasSig: !!sigResult?.sig,
+-          note: sigResult ? 'sig auto-fetched' : 'WARNING: no sig — will revert on-chain',
++          note: sigResult ? 'sig supplied/fetched' : 'WARNING: no sig — will revert on-chain',
+         };
+       } catch (e) {
+         const note = !sigResult
+-          ? 'No sig fetched — set MINT_SIGNED_API_URL in .env and retry'
++          ? 'SIGNATURE_REQUIRED — this contract needs a backend-issued signature for this phase. There is no universal signing API to guess at; obtain one via DevTools (Network → XHR) while minting normally on the project site, then paste it into the EIP-712 field and retry.'
+           : decodeMintError(e, 'mintSigned');
+         return { walletAddress, status: 'dry-run-fail', error: note, fnName: 'mintSigned', hasSig: !!sigResult?.sig };
+       }
+@@ -583,7 +614,7 @@
+     if (!sigResult?.sig || sigResult.sig === '0x') {
+       return {
+         walletAddress, status: 'failed',
+-        error: '[mintSigned] No valid signature obtained. Set MINT_SIGNED_API_URL in .env pointing to the project\'s signing API.',
++        error: 'SIGNATURE_REQUIRED — no valid signature available for mintSigned. There is no universal signing API. Obtain the real signature for this wallet via DevTools (Network → XHR) while minting normally on the project site, then paste it into the EIP-712 field and retry.',
+         fnName: 'mintSigned',
+       };
+     }
