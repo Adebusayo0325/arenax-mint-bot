@@ -343,14 +343,8 @@ function updateChainDisplay() {
   });
 }
 
-document.getElementById('chain-select')?.addEventListener('change', (e) => {
-  currentChainId = parseInt(e.target.value);
-  localStorage.setItem('chainId', currentChainId);
-  updateChainDisplay();
-  toast(`Switched to ${CHAINS[currentChainId]?.name || currentChainId}`, 'green');
-  if (document.getElementById('page-overview')?.classList.contains('active')) loadOverview();
-  if (typeof loadMaster === 'function') loadMaster();
-});
+// [removed: dead chain-select listener — element no longer exists in current HTML,
+//  chain switching is handled by the inline script's switchToChain()]
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 // NOTE: index.html inline script registers its own tab handler for page-specific
@@ -376,55 +370,14 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
   });
 });
 
-// ── OVERVIEW ──────────────────────────────────────────────────────────────────
-async function loadOverview() {
-  try {
-    const [bal, w, sch] = await Promise.all([
-      api(`/api/balance?chainId=${currentChainId}`), api('/api/wallets'), api('/api/schedules'),
-    ]);
-    document.getElementById('ov-address').textContent   = `${bal.address.slice(0,8)}...${bal.address.slice(-6)}`;
-    document.getElementById('ov-balance').textContent   = `${parseFloat(bal.balance).toFixed(6)} ${(CHAINS[currentChainId] || CHAINS[1]).symbol}`;
-    document.getElementById('ov-wallets').textContent   = w.wallets.length;
-    document.getElementById('ov-schedules').textContent = sch.schedules.length;
-  } catch(e) { toast('Overview load failed', 'red'); }
-}
+// [removed: dead duplicate loadOverview() — the inline script in index.html
+//  defines its own loadOverview() that loads after this file and always wins;
+//  this copy also referenced ov-address/ov-balance, which don't exist in the
+//  current HTML, so it would have crashed if it ever somehow ran]
 
-// ── WALLETS ───────────────────────────────────────────────────────────────────
-async function loadWallets() {
-  const c = document.getElementById('w-list');
-  c.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><div class="empty-text">Loading...</div></div>';
-  try {
-    const data = await api('/api/wallets');
-    if (!data.wallets.length) { c.innerHTML = '<div class="empty"><div class="empty-icon">👛</div><div class="empty-text">No wallets yet. Add one above or via Telegram bot.</div></div>'; return; }
-    c.innerHTML = data.wallets.map((w, i) => `
-      <div class="wallet-item">
-        <div class="wallet-left">
-          <div class="wallet-avatar">${i + 1}</div>
-          <div><div class="wallet-addr">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="wallet-lbl">${w.label || `Wallet ${i + 1}`}</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div class="wallet-bal" id="wb-${w.address}">⏳</div>
-          <button class="btn btn-danger btn-sm" onclick="removeWalletUI('${w.address}')">✕</button>
-        </div>
-      </div>`).join('');
-
-    // Fetch real balances for the active chain
-    try {
-      const balData = await api(`/api/wallets/balances?chainId=${currentChainId}`);
-      balData.balances.forEach(b => {
-        const el = document.getElementById(`wb-${b.address}`);
-        if (!el) return;
-        el.textContent = b.balance !== null ? `${parseFloat(b.balance).toFixed(5)} ${(CHAINS[currentChainId] || CHAINS[1]).symbol}` : '—';
-      });
-    } catch (e) {
-      data.wallets.forEach(w => {
-        const el = document.getElementById(`wb-${w.address}`);
-        if (el) el.textContent = '— ETH';
-      });
-    }
-  } catch(e) { c.innerHTML = '<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">Failed</div></div>'; }
-}
-document.getElementById('w-refresh')?.addEventListener('click', loadWallets);
+// [removed: dead duplicate loadWallets() + w-refresh listener — the inline
+//  script's loadWallets() always wins (loads after this file), and w-refresh
+//  doesn't exist in the current HTML so this listener never attached anyway]
 
 // Generic wallet checklist renderer — used on Mint, Fund, and Sweep pages so
 // the user can pick exactly which wallet(s) an action applies to.
@@ -478,25 +431,10 @@ function getSelectedWallets(containerId) {
 // Backwards-compatible name used by the mint page
 function loadWalletSelect() { return renderWalletSelect('m-wallet-select', 'm'); }
 
-document.getElementById('w-add-btn')?.addEventListener('click', async () => {
-  const key = document.getElementById('w-newkey').value.trim();
-  const label = document.getElementById('w-newlabel').value.trim();
-  if (!key) { setStatus('w-add-status', '❌ Enter a private key', 'err'); return; }
-
-  setStatus('w-add-status', '➕ Adding wallet...', 'loading');
-  document.getElementById('w-add-btn').disabled = true;
-  try {
-    const data = await api('/api/wallets/add', { method: 'POST', body: JSON.stringify({ privateKey: key, label }) });
-    setStatus('w-add-status', `✅ Added ${data.address.slice(0,8)}...${data.address.slice(-6)}`, 'ok');
-    toast('Wallet added — synced with Telegram bot', 'green');
-    document.getElementById('w-newkey').value = '';
-    document.getElementById('w-newlabel').value = '';
-    loadWallets();
-  } catch(e) {
-    setStatus('w-add-status', `❌ ${e.message}`, 'err');
-  }
-  document.getElementById('w-add-btn').disabled = false;
-});
+// [removed: dead w-add-btn/w-newkey/w-newlabel wallet-add listener — these
+//  elements don't exist in the current HTML. This was the original broken
+//  "Add Wallet" code (posted to the wrong endpoint too); the live version
+//  is addWallet() in index.html's inline script, already fixed separately.]
 
 async function removeWalletUI(address) {
   if (!confirm(`Remove wallet ${address.slice(0,8)}...?`)) return;
@@ -807,108 +745,33 @@ async function listAtFloor(wallet, contract, tokenId) {
 
 document.getElementById('nft-refresh')?.addEventListener('click', () => { loadNFTs(); loadListedCount(); });
 
-// Sweep
-document.getElementById('sweep-btn')?.addEventListener('click', async () => {
-  const contract  = document.getElementById('sweep-contract').value.trim();
-  const qty       = parseInt(document.getElementById('sweep-qty').value);
-  const maxPrice  = parseFloat(document.getElementById('sweep-price').value);
-  const selected  = getSelectedWallets('sw-wallet-select');
+// [removed: dead sweep-btn listener block — sweep-btn/sweep-contract/
+//  sweep-price/sweep-qty don't exist in current HTML; doSweep() in the
+//  inline script is the live implementation]
 
-  if (!contract || isNaN(qty) || isNaN(maxPrice)) { setStatus('sweep-status', '❌ Fill all fields', 'err'); return; }
-  if (!selected.length) { setStatus('sweep-status', '❌ Select at least one wallet', 'err'); return; }
+// [removed: dead "master wallet" block (loadMaster/master-set-btn/master-clear-btn)
+//  — none of its element IDs exist in current HTML. The live equivalents are
+//  setMaster()/loadMasterInfo() in the inline script.]
 
-  setStatus('sweep-status', `🧹 Sweeping ${qty} NFT(s) from ${selected.length} wallet(s)...`, 'loading');
-  document.getElementById('sweep-btn').disabled = true;
-  try {
-    const data = await api('/api/nfts/sweep', { method: 'POST', body: JSON.stringify({ walletAddresses: selected, contractAddress: contract, quantity: qty, maxPriceEthEach: maxPrice, chainId: currentChainId }) });
-    const results = data.results || [];
-    const ok = results.filter(r => r.status === 'success').length;
-    setStatus('sweep-status', `✅ ${ok}/${results.length} bought`, ok > 0 ? 'ok' : 'err'); toast(`Swept ${ok}/${results.length}`, ok > 0 ? 'green' : 'red');
-  } catch(e) { setStatus('sweep-status', `❌ ${e.message}`, 'err'); }
-  document.getElementById('sweep-btn').disabled = false;
-});
+// [removed: dead auto-balance block — ab-run-btn/ab-min/ab-target/ab-status
+//  don't exist in current HTML; autoBalance() in the inline script is the
+//  live implementation]
 
-// ── MASTER WALLET ─────────────────────────────────────────────────────────────
-async function loadMaster() {
-  try {
-    const data = await api(`/api/master?chainId=${currentChainId}`);
-    const chain = CHAINS[currentChainId] || CHAINS[1];
-    document.getElementById('master-addr-box').textContent = data.address;
-    document.getElementById('master-bal').textContent = `${parseFloat(data.balance).toFixed(6)} ${chain.symbol || 'ETH'}`;
-  } catch(e) { document.getElementById('master-addr-box').textContent = 'Failed'; }
-}
-document.getElementById('master-set-btn')?.addEventListener('click', async () => {
-  const key = document.getElementById('new-master-key').value.trim();
-  if (!key) { setStatus('master-status', '❌ Enter key', 'err'); return; }
-  if (!confirm('Switch master wallet?')) return;
-  setStatus('master-status', '🔄 Switching...', 'loading');
-  document.getElementById('master-set-btn').disabled = true;
-  try {
-    const data = await api('/api/master/set', { method: 'POST', body: JSON.stringify({ privateKey: key }) });
-    if (data.error) throw new Error(data.error);
-    setStatus('master-status', `✅ ${data.warning || 'Updated'}`, 'ok');
-    document.getElementById('new-master-key').value = '';
-    toast('Master updated', 'green'); loadMaster();
-  } catch(e) { setStatus('master-status', `❌ ${e.message}`, 'err'); }
-  document.getElementById('master-set-btn').disabled = false;
-});
-document.getElementById('master-clear-btn')?.addEventListener('click', () => {
-  document.getElementById('new-master-key').value = ''; setStatus('master-status', '', '');
-});
-
-// ── V10: AUTO-BALANCE UI ─────────────────────────────────────────────────────
-document.getElementById('ab-run-btn')?.addEventListener('click', async () => {
-  const minEth    = parseFloat(document.getElementById('ab-min').value)    || 0.01;
-  const targetEth = parseFloat(document.getElementById('ab-target').value) || 0.05;
-  const statusEl  = document.getElementById('ab-status');
-  if (minEth >= targetEth) { statusEl.innerHTML = '<span style="color:#e060a0">Min must be less than target.</span>'; return; }
-  document.getElementById('ab-run-btn').disabled = true;
-  statusEl.innerHTML = '<span style="color:#888">Balancing wallets...</span>';
-  try {
-    const data = await api('/api/wallets/auto-balance', {
-      method: 'POST',
-      body: JSON.stringify({ minEth, targetEth, chainId: currentChainId }),
-    });
-    const results = data.results || [];
-    const topped   = results.filter(r => r.status === 'topped_up');
-    const already  = results.filter(r => r.status === 'sufficient');
-    const failed   = results.filter(r => r.status === 'failed' || r.status === 'master_insufficient');
-    const lines = results.map(r => {
-      const icon = r.status === 'topped_up' ? '&#9889;' : r.status === 'sufficient' ? '&#10003;' : '&#10007;';
-      const sym = (CHAINS[currentChainId] || CHAINS[1]).symbol;
-      const detail = r.amount ? ` +${r.amount} ${sym}` : r.balance ? ` (${parseFloat(r.balance).toFixed(4)} ${sym})` : '';
-      return `<div>${icon} <code>${r.address.slice(0,10)}...</code> ${r.status}${detail}</div>`;
-    }).join('');
-    statusEl.innerHTML = `<div style="color:#60e696;margin-bottom:6px;">Done: ${topped.length} topped up, ${already.length} sufficient, ${failed.length} failed</div>${lines}`;
-    toast('Auto-balance complete', 'green');
-  } catch(e) {
-    statusEl.innerHTML = `<span style="color:#e060a0">Error: ${e.message}</span>`;
-  }
-  document.getElementById('ab-run-btn').disabled = false;
-});
-
-// ── V10: DISCORD STATUS CHECK ─────────────────────────────────────────────────
-async function checkDiscordStatus() {
-  // We can't read env vars from client, so check via a lightweight ping endpoint
-  const el = document.getElementById('discord-status');
-  if (!el) return;
-  try {
-    const data = await api('/api/status');
-    if (data.discordWebhook) {
-      el.innerHTML = '<span style="color:#60e696">&#9679; Connected — mint results will post to Discord</span>';
-    } else {
-      el.innerHTML = '<span style="color:#666">&#9679; Not configured — add DISCORD_WEBHOOK_URL to Render env vars</span>';
-    }
-  } catch(e) { el.innerHTML = '<span style="color:#666">&#9679; Status unknown</span>'; }
-}
+// [removed: dead checkDiscordStatus() — discord-status element doesn't exist
+//  in current HTML and this function's only call site was removed above]
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-// Restore saved chain
-document.getElementById('chain-select').value = currentChainId;
+// FIX: this used to be document.getElementById('chain-select').value = ... with
+// no null-check. That element doesn't exist in the current HTML, so this threw
+// a TypeError on every single page load and silently killed everything after it
+// in this block (updateChainDisplay/loadOverview/loadWalletSelect/checkDiscordStatus
+// never ran). loadOverview/loadWalletSelect were dead duplicates anyway (the
+// inline script's loadWalletChecks('m-wallet-select') already covers wallet-select
+// init), and discord-status doesn't exist either — so only updateChainDisplay()
+// is actually worth keeping here.
+const chainSelectEl = document.getElementById('chain-select');
+if (chainSelectEl) chainSelectEl.value = currentChainId;
 updateChainDisplay();
-loadOverview();
-loadWalletSelect();
-checkDiscordStatus();
 
 
 // ── MINT HISTORY ─────────────────────────────────────────────────────────────
@@ -1108,92 +971,10 @@ document.getElementById('s-proof-mode')?.addEventListener('change', (e) => {
   if (el) el.style.display = e.target.value === 'eip712' ? '' : 'none';
 });
 
-// ── PHASE CHECK ───────────────────────────────────────────────────────────────
-document.getElementById('pc-btn')?.addEventListener('click', async () => {
-  const contract = document.getElementById('pc-contract').value.trim();
-  if (!contract.match(/^0x[0-9a-fA-F]{40}$/)) { toast('Enter a valid 0x contract address', 'red'); return; }
-  const btn = document.getElementById('pc-btn');
-  const out  = document.getElementById('pc-result');
-  btn.disabled = true; out.innerHTML = '⏳ Probing contract...';
-  try {
-    const data = await api(`/api/phase?contract=${contract}&chainId=${currentChainId}`);
-    const p = data.phase || {};
-    const phaseEmoji = { public: '✅', whitelist: '🔒', paused: '⏸', closed: '❌' }[p.phase] || '❓';
-    const confBadge = p.confidence === 'heuristic'
-      ? `<span style="color:#f0b429;border:1px solid #f0b429;border-radius:4px;padding:1px 5px;font-size:10px">⚠️ GUESS</span>`
-      : `<span style="color:#00E5FF;border:1px solid #00E5FF;border-radius:4px;padding:1px 5px;font-size:10px">✓ VERIFIED</span>`;
-    out.innerHTML = `
-      <div style="background:#1a1a2e;border-radius:8px;padding:10px;font-size:12px;font-family:monospace">
-        ${phaseEmoji} <b>${(p.phase || 'unknown').toUpperCase()}</b> ${confBadge}<br>
-        📍 ${p.reason || '—'}<br>
-        🏷 Standard: <b>${data.standard || 'ERC721'}</b><br>
-        ${p.mintPrice ? `💰 Price: <b>${p.mintPrice} ${(CHAINS[currentChainId] || CHAINS[1]).symbol}</b><br>` : ''}
-        ${p.maxPerWallet ? `🔢 Max/wallet: <b>${p.maxPerWallet}</b><br>` : ''}
-        ${p.totalSupply && p.maxSupply ? `📦 Supply: <b>${p.totalSupply}/${p.maxSupply}</b><br>` : ''}
-        ${p.hasMerkleRoot ? `🔐 Merkle root: ✅ (proof required)<br>` : ''}
-        ${data.seaDrop && !data.seaDrop.error ? `<div style="margin-top:8px;background:#071a07;border:1px solid #2ecc71;border-radius:8px;padding:8px 10px;font-size:11px">`+
-          `<b style="color:#2ecc71">🌊 SeaDrop</b> — price auto-read from chain<br>`+
-          `💰 <b style="color:#f0b429">${data.seaDrop.mintPrice} ETH/NFT</b> &nbsp;👛 Max/wallet: ${data.seaDrop.maxPerWallet||'unlimited'}<br>`+
-          `${data.seaDrop.hasMerkleAllowList?'🔐 Allowlist (proof required)':'🌐 Public mint'} &nbsp;`+
-          `${data.seaDrop.isActive?'<span style="color:#2ecc71">✅ LIVE</span>':'<span style="color:#e74c3c">❌ Not active</span>'}<br>`+
-          `<span style="color:#aaa;font-size:10px">Select 🌊 SeaDrop proof mode — no price entry needed</span>`+
-          `</div>` : ''}
-      </div>`;
-    // Auto-fill contract on mint page
-    const mc = document.getElementById('m-contract');
-    if (mc && !mc.value) { mc.value = contract; toast('Contract filled in Mint tab ↑', 'green'); }
-    // Auto-fill eligibility contract too
-    const ec = document.getElementById('el-contract');
-    if (ec && !ec.value) ec.value = contract;
-  } catch(e) {
-    out.innerHTML = `<span style="color:#e74c3c">❌ ${e.message}</span>`;
-  }
-  btn.disabled = false;
-});
-
-// ── ELIGIBILITY CHECK ─────────────────────────────────────────────────────────
-document.getElementById('el-btn')?.addEventListener('click', async () => {
-  let contract = document.getElementById('el-contract').value.trim();
-  if (!contract) contract = document.getElementById('pc-contract')?.value.trim() || '';
-  if (!contract.match(/^0x[0-9a-fA-F]{40}$/)) { toast('Enter a valid 0x contract address', 'red'); return; }
-  const btn = document.getElementById('el-btn');
-  const out = document.getElementById('el-result');
-  btn.disabled = true; out.innerHTML = '⏳ Checking eligibility for all wallets...';
-  try {
-    const data = await api(`/api/eligibility?contract=${contract}&chainId=${currentChainId}`);
-    const results = data.results || [];
-    if (!results.length) { out.innerHTML = '<span style="color:#888">No wallets to check — add a wallet first</span>'; btn.disabled = false; return; }
-    out.innerHTML = results.map((r, i) => {
-      const icon  = r.eligible === true ? '✅' : r.eligible === false ? '❌' : '⚠️';
-      const color = r.eligible === true ? '#2ecc71' : r.eligible === false ? '#e74c3c' : '#f0b429';
-      const label = r.label || `Wallet ${i + 1}`;
-      return `<div style="background:#1a1a2e;border-radius:6px;padding:8px 10px;margin-bottom:6px;">
-        ${icon} <b>${label}</b> — <code>${r.address.slice(0,8)}...${r.address.slice(-6)}</code><br>
-        <span style="color:${color};font-size:11px">${r.eligible === null ? (r.reason||'No eligibility fn found')+' — will attempt mint' : (r.reason||'')}</span>
-      </div>`;
-    }).join('');
-    const eligibleCount   = results.filter(r => r.eligible === true).length;
-    const proceedingCount = results.filter(r => r.eligible === null).length;
-    const blockedCount    = results.filter(r => r.eligible === false).length;
-    let toastMsg, toastColor;
-    if (blockedCount === results.length) {
-      toastMsg = `❌ 0/${results.length} eligible — all blocked on-chain`;
-      toastColor = 'red';
-    } else if (eligibleCount === 0 && proceedingCount > 0) {
-      toastMsg = `⚠️ No eligibility fn — all ${proceedingCount} wallets will attempt the mint`;
-      toastColor = 'green';
-    } else {
-      const blocked = blockedCount > 0 ? `, ${blockedCount} blocked` : '';
-      const proc    = proceedingCount > 0 ? `, ${proceedingCount} unknown (proceeding)` : '';
-      toastMsg   = `${eligibleCount}/${results.length} confirmed eligible${proc}${blocked}`;
-      toastColor = eligibleCount > 0 || proceedingCount > 0 ? 'green' : 'red';
-    }
-    toast(toastMsg, toastColor);
-  } catch(e) {
-    out.innerHTML = `<span style="color:#e74c3c">❌ ${e.message}</span>`;
-  }
-  btn.disabled = false;
-});
+// [removed: dead PHASE CHECK block (pc-btn/pc-contract/pc-result) and dead
+//  ELIGIBILITY CHECK block (el-btn/el-result) — none of these elements exist
+//  in current HTML. checkPhase()/checkEligibility() in the inline script
+//  (wired to pi-contract/el-contract) are the live implementations.]
 
 // ── WALLET SPEND LIMIT & LABEL (in wallet list) ───────────────────────────────
 async function renameWallet(address) {

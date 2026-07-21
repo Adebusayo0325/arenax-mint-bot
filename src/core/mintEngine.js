@@ -966,17 +966,22 @@ async function mintFromAllWallets({
 
   if (proofMode === 'opensea' || proofMode === 'seaport') {
     logger.info(`[OpenSea] SIWE/Seaport routing for ${wallets.length} wallets on chain ${chainId}`);
-    return Promise.all(wallets.map(w => mintViaOpenSea({ contractAddress, walletAddress:w.address, privateKey:w.privateKey, quantity, gweiOverride, chainId, dryRun })));
+    return Promise.all(wallets.map(w => {
+      const spendLimit = spendLimits ? (spendLimits[w.address] || spendLimits[w.address.toLowerCase()] || null) : (w.spendLimit || null);
+      return mintViaOpenSea({ contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit });
+    }));
   }
 
   if (proofMode === 'seadrop') {
     logger.info(`[SeaDrop] Routing ${wallets.length} wallets`);
     return Promise.all(wallets.map(w => {
+      const spendLimit = spendLimits ? (spendLimits[w.address] || spendLimits[w.address.toLowerCase()] || null) : (w.spendLimit || null);
       const proof = proofMap?.[w.address] || (Array.isArray(merkleProof) && merkleProof.length ? merkleProof : []);
-      if (proof.length) return mintSeaDropAllowList({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, proof, chainId, dryRun });
-      return mintSeaDropPublic({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, mintPriceEth: mintPrice, gweiOverride, chainId, dryRun });
+      if (proof.length) return mintSeaDropAllowList({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, proof, chainId, dryRun, spendLimitEth: spendLimit });
+      return mintSeaDropPublic({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, mintPriceEth: mintPrice, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit });
     }));
   }
+
 
   const results = [];
   let phase = { phase: 'unknown', isActive: null, reason: 'not checked' };

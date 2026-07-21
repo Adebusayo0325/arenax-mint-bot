@@ -55,7 +55,7 @@ async function getSeaDropPhase(nftContract, chainId = 1) {
   };
 }
 
-async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quantity = 1, mintPriceEth, gweiOverride = null, chainId = 1, dryRun = false }) {
+async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quantity = 1, mintPriceEth, gweiOverride = null, chainId = 1, dryRun = false, spendLimitEth = null }) {
   const dropper = SEADROP_ADDRESSES[chainId];
   if (!dropper) return { walletAddress, status: 'failed', error: `SeaDrop not on chain ${chainId}` };
   const provider = await getProvider(chainId);
@@ -77,6 +77,13 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
       logger.info(`[SeaDrop] ⚠️  User price ${mintPriceEth} ETH ignored — on-chain: ${ethers.formatEther(priceWei)} ETH`);
   }
   const value    = priceWei * BigInt(quantity);
+  // Spend-limit ceiling — this is the ONLY thing standing between a dev
+  // repricing this drop mid-mint and the wallet paying whatever the new
+  // on-chain price is. Previously this function had no such parameter at all.
+  if (spendLimitEth !== null && parseFloat(ethers.formatEther(value)) > spendLimitEth) {
+    return { walletAddress, status: 'skipped',
+      error: `⚠️ Spend limit ${spendLimitEth} ETH < required ${ethers.formatEther(value)} ETH (on-chain price: ${ethers.formatEther(priceWei)} ETH/NFT). Aborted — price may have changed since you last checked.` };
+  }
   const args     = [nftContract, OPENSEA_FEE_RECIPIENT, walletAddress, BigInt(quantity)];
   const balance  = await provider.getBalance(walletAddress);
   const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(1.15, chainId);
@@ -106,6 +113,12 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
       logger.warn(`[SeaDrop] IncorrectPayment — re-reading price and retrying once`);
       const freshDrop = await seadrop.getPublicDrop(nftContract);
       const freshValue = freshDrop.mintPrice * BigInt(quantity);
+      // Re-check the spend limit against the FRESH price too — the retry
+      // exists specifically because the price just changed underneath us.
+      if (spendLimitEth !== null && parseFloat(ethers.formatEther(freshValue)) > spendLimitEth) {
+        return { walletAddress, status: 'skipped',
+          error: `⚠️ Price changed mid-mint and new price ${ethers.formatEther(freshDrop.mintPrice)} ETH/NFT exceeds spend limit ${spendLimitEth} ETH. Aborted before retry.` };
+      }
       tx = await seadrop.mintPublic(...args, { value: freshValue, gasLimit, ...gasParams });
       receipt = await tx.wait();
     } else throw e;
@@ -113,7 +126,7 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
   return { walletAddress, status: 'success', fn: 'SeaDrop:mintPublic', txHash: tx.hash, gasUsed: receipt.gasUsed.toString() };
 }
 
-async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, quantity = 1, gweiOverride = null, proof = [], chainId = 1, dryRun = false }) {
+async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, quantity = 1, gweiOverride = null, proof = [], chainId = 1, dryRun = false, spendLimitEth = null }) {
   const dropper = SEADROP_ADDRESSES[chainId];
   if (!dropper) return { walletAddress, status: 'failed', error: `SeaDrop not on chain ${chainId}` };
   if (!proof?.length) return { walletAddress, status: 'failed', error: 'SeaDrop allowlist requires a Merkle proof' };
@@ -122,6 +135,10 @@ async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, qu
   const seadrop  = new ethers.Contract(dropper, SEADROP_ABI, signer);
   const drop     = await seadrop.getPublicDrop(nftContract);
   const value    = drop.mintPrice * BigInt(quantity);
+  if (spendLimitEth !== null && parseFloat(ethers.formatEther(value)) > spendLimitEth) {
+    return { walletAddress, status: 'skipped',
+      error: `⚠️ Spend limit ${spendLimitEth} ETH < required ${ethers.formatEther(value)} ETH (on-chain price: ${ethers.formatEther(drop.mintPrice)} ETH/NFT). Aborted.` };
+  }
   const mintParams = { mintPrice: drop.mintPrice, startTime: drop.startTime, endTime: drop.endTime, maxTokenSupplyForStage: 0, dropStageIndex: 1, feeBps: drop.feeBps, restrictFeeRecipients: drop.restrictFeeRecipients };
   const args = [nftContract, OPENSEA_FEE_RECIPIENT, walletAddress, BigInt(quantity), mintParams, proof];
   if (dryRun) {

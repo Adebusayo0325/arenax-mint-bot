@@ -24,6 +24,15 @@ const OPENSEA_BASE = 'https://api.opensea.io/api/v2';
 // v13.1: Fee fetched live from OpenSea API per collection — no more hardcoding.
 const OPENSEA_FEE_BPS_FALLBACK = 100n; // 1% fallback if API doesn't return fee
 const BASIS_POINTS = 10000n;
+// Real OpenSea Seaport zone contract — confirmed from an actual captured
+// OpenSea listing order (Ethereum mainnet). OpenSea's real listings use
+// orderType=FULL_RESTRICTED (2) + this zone, not orderType=0/zero-address
+// as this file previously hardcoded (see listNFT below). Seaport/conduit
+// addresses are already identical across every chain OpenSea supports in
+// chainConfig.js, so this is applied the same way here — but it's only
+// independently confirmed against a mainnet (chainId 1) example; flag if
+// listings on other chains start getting rejected.
+const OPENSEA_ZONE = '0x000056f7000000EcE9003ca63978907a00FfD100';
 
 // Minimal ABIs
 const ERC721_ABI = [
@@ -176,39 +185,37 @@ async function getCollectionSlug(contractAddress, chainId = 1) {
 }
 
 /**
- * Fetch OpenSea's fee for a collection in basis points.
- * Uses the collections API which returns fees[] array.
- * Falls back to OPENSEA_FEE_BPS_FALLBACK (100 bps = 1%) if unavailable.
+ * Fetch ALL of a collection's required Seaport fees (OpenSea's own cut AND
+ * any creator/collection royalty), each with its own recipient address.
+ *
+ * BUG FIX: the old getOpenseaFeeBps() used fees.find(...) and returned only
+ * the FIRST matching fee, then listNFT() paid 100% of it to OpenSea's own
+ * fee recipient. For any collection with an enforced creator royalty
+ * (very common), that either dropped the royalty consideration entirely or
+ * paid the royalty amount to the wrong address — either way OpenSea's API
+ * validation rejects the order, so listings silently failed to post for
+ * royalty-enforced collections. This now returns every required fee with
+ * its real recipient so listNFT() can build one consideration item per fee.
  */
-async function getOpenseaFeeBps(collectionSlug) {
+async function getOpenseaFees(collectionSlug) {
   try {
     const data = await osGet(`/collections/${collectionSlug}`);
-    // OpenSea v2 returns fees as array: [{ fee, recipient, required }]
     const fees = data.fees || [];
-    const openseaFee = fees.find(f => f.required === true || f.fee !== undefined);
-    if (openseaFee && typeof openseaFee.fee === 'number') {
-      // FIX (v23): OpenSea v2 /collections/{slug} returns fee as a PERCENT
-      // (e.g. 1 = 1%, 2.5 = 2.5%), NOT basis points and NOT a 0-1 fraction.
-      // The old >1/<=1 heuristic misread "1" (meaning 1%) as "1 bps",
-      // multiplied by 10000 -> 10000 bps, then got clamped to a stale 250.
-      // OpenSea's current platform fee is 100 bps (1%) — clamp window
-      // updated to 0-300 bps (0%-3%) to allow for collections with added
-      // creator royalties while still catching obviously-wrong values.
-      let bps = BigInt(Math.round(openseaFee.fee * 100)); // percent -> bps
-
-      if (bps > 300n) {
-        logger.warn(`OpenSea fee ${bps} bps (${openseaFee.fee}%) seems too high — clamping to 100 bps`);
-        bps = 100n;
-      }
-      if (bps < 0n) bps = 0n;
-      logger.info(`OpenSea fee for ${collectionSlug}: ${bps} bps`);
-      return bps;
+    const required = fees.filter(f => f.required === true && typeof f.fee === 'number' && f.recipient);
+    if (required.length > 0) {
+      return required.map(f => {
+        // OpenSea v2 /collections/{slug} returns fee as a PERCENT (1 = 1%), not bps.
+        let bps = BigInt(Math.round(f.fee * 100));
+        if (bps < 0n) bps = 0n;
+        if (bps > 1000n) { logger.warn(`Fee ${bps}bps for ${f.recipient} on ${collectionSlug} looks abnormally high — clamping to 1000bps (10%)`); bps = 1000n; }
+        return { bps, recipient: f.recipient };
+      });
     }
   } catch (e) {
-    logger.warn(`Could not fetch OpenSea fee for ${collectionSlug}: ${e.message.slice(0,80)}`);
+    logger.warn(`Could not fetch OpenSea fees for ${collectionSlug}: ${e.message.slice(0,80)}`);
   }
-  logger.info(`Using fallback OpenSea fee: ${OPENSEA_FEE_BPS_FALLBACK} bps`);
-  return OPENSEA_FEE_BPS_FALLBACK;
+  logger.info(`Using fallback OpenSea fee: ${OPENSEA_FEE_BPS_FALLBACK} bps, no royalty (fee lookup failed or returned nothing)`);
+  return [{ bps: OPENSEA_FEE_BPS_FALLBACK, recipient: null }]; // null recipient → caller substitutes chain.openseaFeeRecipient
 }
 
 /**
@@ -423,25 +430,37 @@ async function listNFT({
 
   const priceWei = ethers.parseEther(priceEth.toString());
 
-  // v13.1: Fetch fee dynamically from OpenSea so it never needs to be hardcoded.
-  // Resolves slug first (already needed for floor price), then fetches fee bps.
-  let feeBps = OPENSEA_FEE_BPS_FALLBACK;
+  // Fetch every required fee (OpenSea's own cut + any creator/collection
+  // royalty) so all of them get paid to their correct recipients — see
+  // getOpenseaFees() above for why the old single-fee version was wrong.
+  let fees = [{ bps: OPENSEA_FEE_BPS_FALLBACK, recipient: null }];
   try {
     const slug = await getCollectionSlug(contractAddress, chainId);
-    feeBps = await getOpenseaFeeBps(slug);
+    fees = await getOpenseaFees(slug);
   } catch (e) {
-    logger.warn(`Fee fetch failed, using fallback ${OPENSEA_FEE_BPS_FALLBACK} bps`);
+    logger.warn(`Fee fetch failed, using fallback ${OPENSEA_FEE_BPS_FALLBACK} bps, no royalty`);
   }
 
-  const openseaFee = (priceWei * feeBps) / BASIS_POINTS;
-  const sellerAmount = priceWei - openseaFee;
+  const feeConsiderations = fees.map(f => {
+    const amount = (priceWei * f.bps) / BASIS_POINTS;
+    return {
+      itemType: 0, // ETH
+      token: ethers.ZeroAddress,
+      identifierOrCriteria: 0n,
+      startAmount: amount,
+      endAmount: amount,
+      recipient: f.recipient || chain.openseaFeeRecipient,
+    };
+  });
+  const totalFees = feeConsiderations.reduce((sum, c) => sum + c.startAmount, 0n);
+  const sellerAmount = priceWei - totalFees;
 
   const now = Math.floor(Date.now() / 1000);
   const salt = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
 
   const orderParams = {
     offerer: walletAddress,
-    zone: ethers.ZeroAddress,
+    zone: OPENSEA_ZONE,
     offer: [{
       itemType: isERC1155 ? 3 : 2, // 2=ERC721, 3=ERC1155
       token: contractAddress,
@@ -458,16 +477,9 @@ async function listNFT({
         endAmount: sellerAmount,
         recipient: walletAddress,
       },
-      {
-        itemType: 0,
-        token: ethers.ZeroAddress,
-        identifierOrCriteria: 0n,
-        startAmount: openseaFee,
-        endAmount: openseaFee,
-        recipient: chain.openseaFeeRecipient,
-      },
+      ...feeConsiderations,
     ],
-    orderType: 0, // FULL_OPEN
+    orderType: 2, // FULL_RESTRICTED — matches OpenSea's real listings (zone-enforced fees/royalty)
     startTime: BigInt(now),
     endTime: BigInt(now + durationDays * 86400),
     zoneHash: ethers.ZeroHash,

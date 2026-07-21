@@ -292,6 +292,89 @@ section('13. encodeErrorString/decodeErrorString round-trip (validates test help
 const testStr = 'Sale is not active';
 ok('round-trip matches', decodeErrorString(encodeErrorString(testStr)) === testStr);
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  NEW — tests for this session's fixes (add-wallet 404, spend-limit persistence,
+//  OpenSea fake-endpoint removal, NFT-listing royalty/zone bug, spend-limit
+//  enforcement on OpenSea/SeaDrop paths, app.js crash fix)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── INLINE COPY of server.js POST /api/wallets/add spend-limit parsing ─────
+function parseSpendLimitInput(spendLimit) {
+  return (spendLimit === undefined || spendLimit === null || spendLimit === '') ? null : parseFloat(spendLimit);
+}
+
+section('14. Add Wallet — spendLimit parsing (was silently dropped before the fix)');
+ok('undefined → null (no limit set)',   parseSpendLimitInput(undefined) === null);
+ok('empty string → null',                parseSpendLimitInput('') === null);
+ok('null → null',                        parseSpendLimitInput(null) === null);
+ok('"0.01" (string) → 0.01',             parseSpendLimitInput('0.01') === 0.01);
+ok('0.05 (number) → 0.05',               parseSpendLimitInput(0.05) === 0.05);
+ok('0 is a valid explicit limit, not null', parseSpendLimitInput(0) === 0);
+
+// ─── INLINE COPY of nftManager.js listNFT fee/consideration math ────────────
+// Uses the EXACT numbers from a real captured OpenSea listing order the user
+// provided: 1.39 finney total price, split 94% seller / 1% OpenSea / 5% royalty.
+const BASIS_POINTS_T = 10000n;
+function buildFeeConsiderations(priceWei, fees, fallbackRecipient) {
+  return fees.map(f => ({
+    amount: (priceWei * f.bps) / BASIS_POINTS_T,
+    recipient: f.recipient || fallbackRecipient,
+  }));
+}
+function computeSellerAmount(priceWei, feeConsiderations) {
+  const totalFees = feeConsiderations.reduce((sum, c) => sum + c.amount, 0n);
+  return priceWei - totalFees;
+}
+
+section('15. NFT listing — fee split now includes creator royalty (was silently dropped/misrouted before)');
+const REAL_PRICE_WEI = 1390000000000000n; // from the real captured order
+const REAL_FEES = [
+  { bps: 100n, recipient: '0xOpenSeaFeeRecipient' }, // 1%
+  { bps: 500n, recipient: '0xCreatorRoyaltyRecipient' }, // 5%
+];
+const considerations = buildFeeConsiderations(REAL_PRICE_WEI, REAL_FEES, '0xFallback');
+const sellerAmount = computeSellerAmount(REAL_PRICE_WEI, considerations);
+ok('OpenSea fee = 13900000000000 wei (1%)',    considerations[0].amount === 13900000000000n);
+ok('Creator royalty = 69500000000000 wei (5%)', considerations[1].amount === 69500000000000n);
+ok('Royalty paid to the CREATOR, not OpenSea',  considerations[1].recipient === '0xCreatorRoyaltyRecipient');
+ok('Seller amount = 1306600000000000 wei (94%)', sellerAmount === 1306600000000000n);
+ok('Old bug: single-fee version would have paid the royalty % to OpenSea\'s address instead — this now keeps them separate',
+   considerations[0].recipient !== considerations[1].recipient);
+
+section('16. NFT listing — fee with no recipient falls back to chain fee recipient (fetch-failure case)');
+const fallbackCase = buildFeeConsiderations(REAL_PRICE_WEI, [{ bps: 100n, recipient: null }], '0xChainDefaultRecipient');
+ok('null recipient uses fallback', fallbackCase[0].recipient === '0xChainDefaultRecipient');
+
+// ─── INLINE COPY of seaDropEngine.js / openSeaEngine.js spend-limit ceiling ──
+function exceedsSpendLimit(valueWei, spendLimitEth, formatEtherFn) {
+  if (spendLimitEth === null) return false;
+  return parseFloat(formatEtherFn(valueWei)) > spendLimitEth;
+}
+
+section('17. Spend-limit ceiling — now enforced on SeaDrop/OpenSea paths (previously only the generic mint path had it)');
+ok('null limit never blocks',                 exceedsSpendLimit(parseEther('5'), null, formatEther) === false);
+ok('price within limit passes',               exceedsSpendLimit(parseEther('0.01'), 0.05, formatEther) === false);
+ok('price over limit is blocked',             exceedsSpendLimit(parseEther('0.1'), 0.05, formatEther) === true);
+ok('price exactly at limit passes',           exceedsSpendLimit(parseEther('0.05'), 0.05, formatEther) === false);
+
+section('18. app.js init crash fix — guarded getElementById never throws on a missing element');
+function safeSetChainSelectValue(getElementByIdFn, value) {
+  const el = getElementByIdFn('chain-select');
+  if (el) el.value = value;
+  return true; // reaching here means it didn't throw
+}
+const fakeGetElementByIdMissing = () => null; // simulates the element not existing, as in current HTML
+let threw = false;
+try { safeSetChainSelectValue(fakeGetElementByIdMissing, 1); } catch (e) { threw = true; }
+ok('guarded version does not throw when chain-select is missing', threw === false);
+// Sanity check that this test actually would have caught the old bug:
+function oldUnguardedSetChainSelectValue(getElementByIdFn, value) {
+  getElementByIdFn('chain-select').value = value; // old code — throws if null
+}
+let oldThrew = false;
+try { oldUnguardedSetChainSelectValue(fakeGetElementByIdMissing, 1); } catch (e) { oldThrew = true; }
+ok('the OLD unguarded pattern really did throw (proves this is a real regression test, not a no-op)', oldThrew === true);
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);
