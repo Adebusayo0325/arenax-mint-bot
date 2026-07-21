@@ -965,15 +965,7 @@ async function mintFromAllWallets({
   }
 
   if (proofMode === 'opensea' || proofMode === 'seaport') {
-    // ── Guard: detect chain mismatch before firing to avoid 405 errors ────
-    const { getDropInfo } = require('./openSeaEngine');
-    try {
-      const dropInfo = await getDropInfo(contractAddress, chainId);
-      // If the drops API returns data for a DIFFERENT chain slug than what we're on, warn
-      // (The bigger issue is when chainId=1/ethereum is used for a Base contract)
-      // We let it proceed — openSeaEngine already routes Drops API first, which is chain-aware
-    } catch(e) { /* non-critical */ }
-    logger.info(`[OpenSea] Seaport/Drops 2026 routing for ${wallets.length} wallets on chain ${chainId}`);
+    logger.info(`[OpenSea] SIWE/Seaport routing for ${wallets.length} wallets on chain ${chainId}`);
     return Promise.all(wallets.map(w => mintViaOpenSea({ contractAddress, walletAddress:w.address, privateKey:w.privateKey, quantity, gweiOverride, chainId, dryRun })));
   }
 

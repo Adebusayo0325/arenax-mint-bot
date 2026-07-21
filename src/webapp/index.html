@@ -1524,7 +1524,7 @@ async function addWallet() {
   const st = document.getElementById('w-status');
   setStatus(st, '⏳ Adding…', 'loading');
   try {
-    await api('/api/wallets', { method:'POST', body: JSON.stringify({ privateKey:pk, label:label||null, spendLimit:limit }) });
+    await api('/api/wallets/add', { method:'POST', body: JSON.stringify({ privateKey:pk, label:label||null, spendLimit:limit }) });
     setStatus(st, '✅ Wallet added', 'ok');
     document.getElementById('w-pk').value = '';
     document.getElementById('w-label').value = '';

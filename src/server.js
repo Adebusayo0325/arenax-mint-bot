@@ -160,10 +160,11 @@ app.get('/api/wallets/balances', async (req, res) => {
 
 app.post('/api/wallets/add', (req, res) => {
   try {
-    const { privateKey, label } = req.body;
+    const { privateKey, label, spendLimit } = req.body;
     if (!privateKey) return res.status(400).json({ error: 'Private key required' });
-    const address = addWallet(privateKey, label || '');
-    res.json({ address });
+    const limit = (spendLimit === undefined || spendLimit === null || spendLimit === '') ? null : parseFloat(spendLimit);
+    const address = addWallet(privateKey, label || '', limit);
+    res.json({ address, spendLimit: limit });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -671,22 +672,6 @@ app.post('/api/events/watch', async (req, res) => {
   });
   res.json(w ? { status: 'watching', contract } : { status: 'unavailable', note: 'Provider connected but no WS events — RPC may not support event subscriptions' });
 });
-
-app.get('/api/events/watchers', (req, res) => {
-  res.json({ watchers: getActiveWatchers() });
-});
-
-// ── Adapter detect API ──────────────────────────────────────────────────────
-app.get('/api/adapter', async (req, res) => {
-  const { contract, chainId = 1 } = req.query;
-  if (!contract) return res.status(400).json({ error: 'contract required' });
-  try {
-    const adapter = await detectAdapter(contract, parseInt(chainId));
-    res.json({ adapterId: adapter.id, adapterName: adapter.name, mintFn: adapter.mintFn, routeTo: adapter.routeTo });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Event watcher API ─────────────────────────────────────────────────────
 
 app.get('/api/events/watchers', (req, res) => {
   res.json({ watchers: getActiveWatchers() });

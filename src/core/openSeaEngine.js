@@ -1,12 +1,14 @@
 /**
- * openSeaEngine.js — v2026.3
+ * openSeaEngine.js
  *
- * DATA (floor, listings, sweep, portfolio): api.opensea.io/api/v2 — API key only
- * MINT: 3 self-adapting routes tried in order:
- *   Route 1 — SIWE + GraphQL (same as website — most reliable)
- *   Route 2 — Drops API /fulfill (API key only, no SIWE)
- *   Route 3 — Seaport order fulfillment (older drops)
- * If OpenSea changes SIWE, Route 2 and 3 still work automatically.
+ * DATA (floor, listings, sweep, portfolio, contract metadata): api.opensea.io/api/v2 — API key only.
+ * There is no public OpenSea REST endpoint for primary-mint "drop" stage/price
+ * data — that only exists inside opensea.io's own session-authenticated GraphQL.
+ * MINT: 2 routes tried in order:
+ *   Route 1 — SIWE + GraphQL (mirrors the actual website mint flow — the only
+ *             route that can read/execute real primary-mint "drop" stages)
+ *   Route 2 — Seaport order fulfillment (for buying already-listed/relisted items,
+ *             not primary mint — uses the real /orders and /listings/fulfillment_data endpoints)
  */
 
 const { ethers } = require('ethers');
@@ -128,15 +130,24 @@ async function osFetchCalldataGQL(signer, contractAddr, chainSlug, qty, cookie) 
 }
 
 // ── DATA FUNCTIONS (API v2 — floor price, listings, portfolio, sweep) ─────────
+// NOTE: OpenSea has no public "Drops" REST resource (confirmed against
+// docs.opensea.io/reference — only contract/orders/offers/listings/fulfillment_data
+// exist). The old getDropInfo/getDropStages/getMintFulfillmentData here hit
+// invented /v2/drops/... paths that always 404'd, so phase-check silently got
+// zero real signal from OpenSea. getDropInfo now uses the real Get Contract
+// endpoint (verified collection metadata). There is no documented replacement
+// for stage/price data — OpenSea only exposes that on opensea.io itself via
+// the internal SIWE+GraphQL session (see Route 1 in mintViaOpenSea below).
 async function getDropInfo(contractAddress, chainId=1) {
   const chain = CHAIN_SLUG[chainId]||'ethereum';
-  try { return await osFetch(`${OPENSEA_API}/drops/${chain}/${contractAddress.toLowerCase()}`); }
-  catch(e) { logger.debug(`[OS/DropInfo] ${e.message}`); return null; }
+  try { return await osFetch(`${OPENSEA_API}/chain/${chain}/contract/${contractAddress.toLowerCase()}`); }
+  catch(e) { logger.debug(`[OS/Contract] ${e.message}`); return null; }
 }
-async function getDropStages(contractAddress, chainId=1) {
-  const chain = CHAIN_SLUG[chainId]||'ethereum';
-  try { const d = await osFetch(`${OPENSEA_API}/drops/${chain}/${contractAddress.toLowerCase()}/stages`); return d.stages||[]; }
-  catch(e) { logger.debug(`[OS/Stages] ${e.message}`); return []; }
+// Deprecated: no public OpenSea endpoint returns primary-mint stage data.
+// Kept as a no-op stub (rather than calling a fake URL) so existing callers
+// that expect this export don't crash.
+async function getDropStages(_contractAddress, _chainId=1) {
+  return [];
 }
 function findActiveStage(stages=[]) {
   const now = Date.now()/1000;
@@ -159,47 +170,44 @@ async function getMintOrders(contractAddress, chainId=1, limit=20) {
   const data = await osFetch(`${OPENSEA_API}/orders/${chain}/seaport/listings?asset_contract_address=${contractAddress.toLowerCase()}&order_by=created_date&order_direction=desc&limit=${limit}`);
   return data.orders||[];
 }
-async function getMintFulfillmentData(contractAddress, walletAddress, quantity, stageIndex=0, chainId=1) {
-  const chain = CHAIN_SLUG[chainId]||'ethereum';
-  try {
-    return await osFetch(`${OPENSEA_API}/drops/${chain}/${contractAddress.toLowerCase()}/fulfill`, {
-      method:'POST',
-      body: JSON.stringify({ fulfiller:{address:walletAddress}, quantity, stage_index:stageIndex }),
-    });
-  } catch(e) { logger.debug(`[OS/Fulfill] ${e.message}`); return null; }
+// Deprecated: no public OpenSea endpoint fulfills primary-mint "drop" stages
+// directly. Kept as a no-op stub for backward compatibility — real mint
+// execution goes through Route 1 (SIWE+GraphQL) or Route 2 (Seaport orders)
+// in mintViaOpenSea below.
+async function getMintFulfillmentData(_contractAddress, _walletAddress, _quantity, _stageIndex=0, _chainId=1) {
+  return null;
 }
 
 // ── PHASE DETECTION ───────────────────────────────────────────────────────────
+// OpenSea's public API has no endpoint for primary-mint stage/price data, so
+// this can only report what's genuinely available: verified collection
+// metadata (Get Contract) and secondary-market Seaport listing prices. It
+// deliberately never claims 'verified' phase/price it doesn't actually have —
+// the caller (server.js /api/phase) falls back to on-chain SeaDrop detection
+// and bytecode fingerprinting for real primary-mint phase, which is the
+// correct source of truth since SeaDrop is the actual contract OpenSea drops
+// run on.
 async function getOpenSeaPhase(contractAddress, chainId=1) {
   if (!apiKey()) return { phase:'UNKNOWN', note:'No OPENSEA_API_KEY set' };
+  let collectionNote = null;
   try {
-    const drop = await getDropInfo(contractAddress, chainId);
-    if (drop) {
-      const stages = drop.stages||await getDropStages(contractAddress, chainId);
-      const active = findActiveStage(stages);
-      if (active) {
-        const price = active.price?.amount?.decimal||active.mint_price||null;
-        return { phase:'PUBLIC', confidence:'verified', mintPrice:price?String(price):null, maxPerWallet:active.max_per_wallet||null, stageName:active.stage_name||active.stage_type, note:`OpenSea drop: ${active.stage_type}, price:${price||'FREE'}`, method:'drops_api' };
-      }
-      const upcoming = (drop.stages||stages).find(s=>new Date(s.start_time).getTime()/1000>Date.now()/1000);
-      return { phase:upcoming?'UPCOMING':(drop.drop_status==='ended'?'CLOSED':'UNKNOWN'), confidence:'verified', note:upcoming?`Next: ${upcoming.start_time}`:`Status: ${drop.drop_status}`, method:'drops_api' };
-    }
-  } catch(e) { logger.debug(`[OS/Phase/Drops] ${e.message}`); }
+    const contract = await getDropInfo(contractAddress, chainId);
+    if (contract) collectionNote = contract.collection ? `OpenSea collection: ${contract.collection}` : 'Contract verified on OpenSea';
+  } catch(e) { logger.debug(`[OS/Phase/Contract] ${e.message}`); }
   try {
     const orders = await getMintOrders(contractAddress, chainId, 5);
     if (orders.length>0) {
       const price = orders[0]?.current_price?ethers.formatEther(BigInt(orders[0].current_price)):null;
-      return { phase:'PUBLIC', confidence:'heuristic', mintPrice:price, note:`${orders.length} Seaport orders, price:${price||'free'} ETH`, method:'seaport_orders' };
+      return { phase:'PUBLIC', confidence:'heuristic', mintPrice:price, note:`${collectionNote?collectionNote+' — ':''}${orders.length} active Seaport listing(s), price:${price||'free'} ETH (secondary market, not confirmed primary-mint price)`, method:'seaport_orders' };
     }
   } catch(e) { logger.debug(`[OS/Phase/Orders] ${e.message}`); }
-  return { phase:'UNKNOWN', confidence:'none', note:'No active Drops or Seaport orders found' };
+  return { phase:'UNKNOWN', confidence:'none', note:collectionNote||'No OpenSea listings found — check SeaDrop/on-chain detection instead' };
 }
 
 async function isOpenSeaDrop(contractAddress, chainId=1) {
   if (!apiKey()) return false;
-  const drop = await getDropInfo(contractAddress, chainId);
-  if (drop) return true;
-  try { const o = await getMintOrders(contractAddress, chainId, 1); return o.length>0; } catch { return false; }
+  try { const o = await getMintOrders(contractAddress, chainId, 1); if (o.length>0) return true; } catch {}
+  try { const contract = await getDropInfo(contractAddress, chainId); return !!contract; } catch { return false; }
 }
 
 // ── TX EXECUTOR ───────────────────────────────────────────────────────────────
@@ -248,19 +256,7 @@ async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quan
     } catch(e) { log.push(`GQL:${e.message.slice(0,60)}`); logger.warn(`[OS/GQL] ${e.message}`); }
   } catch(e) { log.push(`SIWE:${e.message.slice(0,80)}`); logger.warn(`[OS/SIWE] ${e.message}`); }
 
-  // Route 2: Drops API /fulfill
-  try {
-    const stages = await getDropStages(contractAddress, chainId);
-    const active = findActiveStage(stages);
-    if (active) {
-      const fd = await getMintFulfillmentData(contractAddress, walletAddress, quantity, stages.indexOf(active), chainId);
-      const tx = fd?.fulfillment_data?.transaction||fd?.transaction;
-      if (tx?.to) { log.push('Drops:ok'); return await _exec({tx,walletAddress,signer,provider,gasParams,effectiveFee,dryRun,spendLimitEth,fn:'DropsAPI'}); }
-    }
-    log.push('Drops:no active stage');
-  } catch(e) { log.push(`Drops:${e.message.slice(0,60)}`); }
-
-  // Route 3: Seaport orders
+  // Route 2: Seaport orders (real listings — secondary market / relisted mints)
   try {
     const orders = await getMintOrders(contractAddress, chainId, quantity*3);
     if (!orders.length) return {walletAddress,status:'failed',error:`No active Seaport orders.\nRoutes: ${log.join(' → ')}`};
