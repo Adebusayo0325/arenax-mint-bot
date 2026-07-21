@@ -166,9 +166,33 @@ async function getFulfillmentData(orderHash, protocolAddress, fulfillerAddress, 
   });
 }
 async function getMintOrders(contractAddress, chainId=1, limit=20) {
-  const chain = CHAIN_SLUG[chainId]||'ethereum';
-  const data = await osFetch(`${OPENSEA_API}/orders/${chain}/seaport/listings?asset_contract_address=${contractAddress.toLowerCase()}&order_by=created_date&order_direction=desc&limit=${limit}`);
-  return data.orders||[];
+  // FIX: this used to call GET /v2/orders/{chain}/seaport/listings, which
+  // returns 405 Method Not Allowed on OpenSea's current API (that endpoint's
+  // signature-vending behavior changed and it looks to have been retired for
+  // GET). The 405 was being misreported to the user as "likely wrong chain
+  // selected" — that text was a guess, not a real diagnosis; the actual chain
+  // was never the problem. This now uses the same /listings/collection/{slug}/all
+  // endpoint that nftManager.js's getFloorListings() already uses successfully.
+  const { getCollectionSlug } = require('./nftManager');
+  let slug;
+  try {
+    slug = await getCollectionSlug(contractAddress, chainId);
+  } catch (e) {
+    throw new Error(`Could not resolve OpenSea collection for ${contractAddress}: ${e.message}`);
+  }
+  if (!slug) throw new Error(`No OpenSea collection found for ${contractAddress} on chain ${chainId}`);
+  const data = await osFetch(`${OPENSEA_API}/listings/collection/${slug}/all?limit=${Math.min(limit,50)}`);
+  const listings = data.listings || [];
+  // NOTE: order_hash/protocol_address field names below are my best-evidence
+  // read of OpenSea's v2 listings response shape (I don't have live network
+  // access to confirm against a real response). If mints still fail after
+  // this fix, check Render logs for the actual error and we'll adjust the
+  // field names to match what's really coming back.
+  return listings.map(l => ({
+    order_hash: l.order_hash || l.protocol_data?.order_hash,
+    protocol_address: l.protocol_address || l.protocol_data?.protocol_address || SEAPORT,
+    current_price: l.price?.current?.value,
+  })).filter(o => o.order_hash);
 }
 // Deprecated: no public OpenSea endpoint fulfills primary-mint "drop" stages
 // directly. Kept as a no-op stub for backward compatibility — real mint
@@ -272,8 +296,7 @@ async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quan
     const ok = results.filter(r=>r.status==='success'||r.status==='dry-run-ok').length;
     return {walletAddress,status:ok===results.length?(dryRun?'dry-run-ok':'success'):ok>0?'partial':'failed',results,fn:'SeaportOrder'};
   } catch(e) {
-    const is405 = e.message.includes('405');
-    return {walletAddress,status:'failed',error:(is405?'405 on Seaport — likely wrong chain selected. Switch chain and retry.':'All 3 routes failed.')+`\nRoutes: ${log.join(' → ')}\nLast: ${e.message.slice(0,100)}`};
+    return {walletAddress,status:'failed',error:`OpenSea mint failed.\nRoutes tried: ${log.join(' → ')}\nReason: ${e.message.slice(0,200)}`};
   }
 }
 

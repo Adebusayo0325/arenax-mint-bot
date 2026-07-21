@@ -1301,9 +1301,39 @@ async function autoDetectChain() {
 
 function switchToChain(chainId) {
   currentChainId = chainId;
-  const sel = document.getElementById('chain-select');
-  if (sel) { sel.value = chainId; sel.dispatchEvent(new Event('change')); }
+  const sel = document.getElementById('global-chain');
+  if (sel) sel.value = chainId;
   toast(`Switched to ${CHAIN_NAMES[chainId]||'chain '+chainId}`, 'green');
+  refreshActivePageForChainChange();
+}
+
+// FIX: the header chain <select> has onchange="onChainChange()", but that
+// function was never defined anywhere — every chain switch from the header
+// dropdown silently threw a ReferenceError in the console and did nothing
+// (currentChainId never updated, no page refreshed). This was the "switch
+// chain doesn't work" bug. switchToChain() above also referenced a
+// nonexistent 'chain-select' id instead of the real 'global-chain' id.
+function onChainChange() {
+  const sel = document.getElementById('global-chain');
+  if (!sel) return;
+  currentChainId = parseInt(sel.value);
+  toast(`Switched to ${CHAIN_NAMES[currentChainId]||'chain '+currentChainId}`, 'green');
+  refreshActivePageForChainChange();
+}
+
+// Shared by both chain-switch paths (header dropdown + Detect Chain's
+// "Switch & Use" button) so whichever page is currently open reloads its
+// data for the newly-selected chain instead of silently showing stale data.
+function refreshActivePageForChainChange() {
+  const page = document.querySelector('.nav-tab.active')?.dataset.page;
+  if (page === 'overview') loadOverview();
+  if (page === 'mint') loadWalletChecks('m-wallet-select');
+  if (page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
+  if (page === 'fund') loadWalletChecks('f-wallet-select');
+  if (page === 'nft') { loadNFTs(); populateListWallet(); }
+  if (page === 'wallets') loadWallets();
+  if (page === 'history') loadHistory();
+  if (page === 'master') loadMasterInfo();
 }
 
 async function checkPhase() {

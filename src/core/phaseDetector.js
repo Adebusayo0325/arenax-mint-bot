@@ -259,30 +259,39 @@ async function detectMintPhase(contractAddress, walletAddresses = [], chainId = 
     result.wallets[walletAddress] = info;
   }
 
-  // ── v24: Confidence tagging ─────────────────────────────────────────────
+  // ── v24/v25: Confidence tagging ──────────────────────────────────────────
   // FIX: phase detection is a heuristic (probes ~10 common getter names).
   // Many custom contracts expose none of them, in which case `phase` stays
   // 'UNKNOWN' but the bot previously presented this with the same visual
   // weight as a verified PAUSED/PUBLIC reading. Now every result carries a
   // `confidence` flag so the UI can visibly distinguish "we read this from
   // the contract" vs "we're guessing because nothing matched":
-  //   'verified' — at least one real on-chain flag (pause/sale-active/phase
-  //                 enum/merkle root/supply) was successfully read
-  //   'heuristic' — phase is UNKNOWN/PUBLIC-by-default with no contract
-  //                 signal at all; this is a guess, not a reading
-  const anySignalFound = (
+  //   'verified' — at least one real PHASE-determining flag (pause/sale-active/
+  //                 phase enum/merkle root) was successfully read
+  //   'heuristic' — phase is UNKNOWN/PUBLIC-by-default with no PHASE signal
+  //                 at all; this is a guess, not a reading
+  //
+  // FIX (v25): this used to also count totalSupply/maxSupply/mintPrice as
+  // "verified" signals. Those are real on-chain reads, but they say nothing
+  // about PHASE — a contract can expose totalSupply() while having zero
+  // pause/sale-active concept at all. That produced the confusing
+  // "PHASE: UNKNOWN, CONFIDENCE: verified" contradiction users would see for
+  // any contract that exposes supply/price getters but no phase getters
+  // (common for OpenSea Studio/Seaport-based drops, which don't expose a
+  // paused()/saleIsActive() the way ERC721 mint contracts usually do).
+  // Confidence is now scoped to signals that actually inform PHASE.
+  const phaseSignalFound = (
     result.raw.paused !== null || result.raw.saleIsActive !== null ||
     result.raw.publicSaleActive !== null || result.raw.mintEnabled !== null ||
     result.raw.isLive !== null || result.raw.isMintOpen !== null ||
     result.raw.mintOpen !== null || result.raw.presaleActive !== null ||
     result.raw.wlEnabled !== null || result.raw.alEnabled !== null ||
     result.raw.phaseNum !== undefined ||
-    result.hasMerkleRoot || result.mintPrice !== null ||
-    result.totalSupply !== null || result.maxSupply !== null
+    result.hasMerkleRoot
   );
-  result.confidence = anySignalFound ? 'verified' : 'heuristic';
-  if (!anySignalFound) {
-    result.reason = '⚠️ No phase/sale-state getters found on this contract — phase is a default guess, not a verified reading. Check the project\'s site/Discord for the actual mint status.';
+  result.confidence = phaseSignalFound ? 'verified' : 'heuristic';
+  if (!phaseSignalFound) {
+    result.reason = '⚠️ No phase/sale-state getters found on this contract — phase is a default guess, not a verified reading. This is common for OpenSea Studio/Seaport drops, which often don\'t expose a standard paused()/saleIsActive() getter. Check the project\'s OpenSea page/Discord for the actual mint status.';
   } else {
     result.reason = result.reason || `Phase determined from on-chain reads (${result.phase})`;
   }
