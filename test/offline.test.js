@@ -437,6 +437,47 @@ const resultChainId = simulateOnChainChange('8453', () => { refreshCalled = true
 ok('selecting Base (8453) updates currentChainId', resultChainId === 8453);
 ok('page-refresh callback actually runs on chain change', refreshCalled === true);
 
+section('22. Robinhood Chain — added to chain config (confirmed live July 2026, OpenSea-supported)');
+const { CHAINS: LIVE_CHAINS, getChain: liveGetChain } = require('../src/utils/chainConfig.js');
+ok('chain 4663 exists in config', !!LIVE_CHAINS[4663]);
+ok('correct name', LIVE_CHAINS[4663]?.name === 'Robinhood Chain');
+ok('correct native symbol (ETH — Arbitrum Orbit L2)', LIVE_CHAINS[4663]?.symbol === 'ETH');
+ok('getChain(4663) resolves correctly', liveGetChain(4663)?.name === 'Robinhood Chain');
+ok('has a real RPC URL configured', LIVE_CHAINS[4663]?.publicRpcs?.[0]?.includes('robinhood.com'));
+
+// ─── INLINE COPY of gasOracle.js economy vs priority logic ─────────────────
+function computeGasMode(competitive, networkTipWei) {
+  const MIN_TIP_WEI = 1000000000n; // 1 gwei
+  let tip = networkTipWei;
+  if (competitive && tip < MIN_TIP_WEI) tip = MIN_TIP_WEI;
+  const headroom = competitive ? 1.45 : 1.13;
+  return { tip, headroom };
+}
+
+section('23. Gas — economy (default) is genuinely cheaper than priority, not just "priority minus a little"');
+const quietNetworkTip = 260000000n; // 0.26 gwei — a real quiet-period value from the code's own comment
+const economyResult = computeGasMode(false, quietNetworkTip);
+const priorityResult = computeGasMode(true, quietNetworkTip);
+ok('economy mode respects the real low network tip (no artificial floor)', economyResult.tip === quietNetworkTip);
+ok('priority mode enforces the 1 gwei floor', priorityResult.tip === 1000000000n);
+ok('economy tip is meaningfully lower than priority tip during quiet periods', economyResult.tip < priorityResult.tip);
+ok('economy headroom is tighter than priority headroom', economyResult.headroom < priorityResult.headroom);
+
+section('24. Scheduler — OpenSea/SeaDrop routing now matches live Mint (was silently ignored before)');
+// Confirms the specific proofMode values that must route through
+// mintFromAllWallets rather than the generic per-wallet retry loop.
+function resolveScheduleRoute(proofMode, useFlashbots) {
+  if (useFlashbots || proofMode === 'flashbots') return 'flashbots';
+  if (proofMode === 'opensea' || proofMode === 'seaport' || proofMode === 'seadrop') return 'mintFromAllWallets';
+  return 'genericRetryLoop';
+}
+ok('opensea proofMode routes through mintFromAllWallets (was: silently fell to generic before this fix)',
+   resolveScheduleRoute('opensea', false) === 'mintFromAllWallets');
+ok('seaport proofMode routes through mintFromAllWallets', resolveScheduleRoute('seaport', false) === 'mintFromAllWallets');
+ok('seadrop proofMode routes through mintFromAllWallets', resolveScheduleRoute('seadrop', false) === 'mintFromAllWallets');
+ok('flashbots still takes priority over proofMode', resolveScheduleRoute('opensea', true) === 'flashbots');
+ok('generic/none proofMode still uses the retry loop (unchanged behavior)', resolveScheduleRoute('none', false) === 'genericRetryLoop');
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);

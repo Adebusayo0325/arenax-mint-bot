@@ -563,6 +563,7 @@
         <option value="33139">ApeChain 🦍</option>
         <option value="81457">Blast</option>
         <option value="43114">Avalanche</option>
+        <option value="4663">Robinhood Chain</option>
         <option value="59144">Linea</option>
         <option value="7777777">Zora</option>
       </select>
@@ -852,6 +853,10 @@
         <input type="checkbox" id="m-dryrun"/>
         <span>🧪 Dry run — simulate only, no tx broadcast</span>
       </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="m-priority-gas"/>
+        <span>⚡ Priority gas — race a live drop (costs more; leave unchecked for cheapest gas)</span>
+      </label>
 
       <button class="btn btn-gold" id="m-btn" onclick="startExecFlow()">🔥 Mint Selected Wallets</button>
       <div class="status-bar" id="m-status" style="display:none"></div>
@@ -960,6 +965,10 @@
       <label class="checkbox-row">
         <input type="checkbox" id="s-dryrun"/>
         <span>🧪 Dry run</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="s-priority-gas"/>
+        <span>⚡ Priority gas — race a live drop (costs more; leave unchecked for cheapest gas)</span>
       </label>
       <button class="btn btn-gold" id="s-btn" onclick="doSchedule()">⏰ Schedule Mint</button>
       <div class="status-bar" id="s-status" style="display:none"></div>
@@ -1268,7 +1277,7 @@ function getChecked(containerId) {
 
 // ── Phase Inspector ────────────────────────────────────────────────
 // Chain name map for display
-const CHAIN_NAMES = { 1:'Ethereum',8453:'Base',10:'Optimism',137:'Polygon',42161:'Arbitrum',56:'BNB Chain',33139:'ApeChain',81457:'Blast',43114:'Avalanche',59144:'Linea',7777777:'Zora' };
+const CHAIN_NAMES = { 1:'Ethereum',8453:'Base',10:'Optimism',137:'Polygon',42161:'Arbitrum',56:'BNB Chain',33139:'ApeChain',81457:'Blast',43114:'Avalanche',59144:'Linea',7777777:'Zora',4663:'Robinhood Chain' };
 
 async function autoDetectChain() {
   const contract = document.getElementById('pi-contract').value.trim();

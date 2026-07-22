@@ -100,6 +100,7 @@ async function mintWithRetry({
   spendLimitEth = null,
   soldOutSignal = null,
   useLaunchpadProof = false,
+  priorityGas = false,
   onAttempt,
 }) {
   const deadline = Date.now() + timeoutMs;
@@ -138,6 +139,7 @@ async function mintWithRetry({
         spendLimitEth,
         soldOutSignal,
         useLaunchpadProof,
+        priorityGas,
       });
 
       if (result.status === 'dry-run-fail') {
@@ -241,6 +243,7 @@ async function _scheduleAllWalletsInner({
   gasEscalatePercent = 10,
   useLaunchpadProof = false,
   spendLimits = null,
+  priorityGas = false,
   walletFilter = null, // v20: array of wallet addresses to restrict this schedule to (null = all wallets)
   // Callbacks
   onCountdown, onStart, onPhaseDetected, onPhaseUpdate, onWalletUpdate, onComplete, onSimPassed,
@@ -382,10 +385,30 @@ async function _scheduleAllWalletsInner({
         wallets, contractAddress, quantity, mintPrice,
         customFn, gweiOverride, chainId,
         merkleProof, proofMap, eip712Sigs, tokenId,
-        onSimPassed,
+        onSimPassed, priorityGas,
       });
     } catch (err) {
       results = [{ status: 'failed', error: err.message }];
+    }
+  } else if (proofMode === 'opensea' || proofMode === 'seaport' || proofMode === 'seadrop') {
+    // FIX: this branch didn't exist before — scheduled mints for OpenSea/
+    // Seaport/SeaDrop silently fell through to the generic per-wallet retry
+    // loop below, which guesses at standard ERC721 mint() function names.
+    // That has no chance of working on an OpenSea Studio drop (no public
+    // mint() function at all — it's fulfilled via Seaport/SIWE) and ignores
+    // SeaDrop's on-chain price-reading entirely. Routing through
+    // mintFromAllWallets reuses the exact same dispatch logic live "Mint Now"
+    // already uses correctly, so Schedule can't silently drift out of sync
+    // with Mint again.
+    try {
+      results = await mintFromAllWallets({
+        wallets, contractAddress, quantity, mintPrice,
+        gweiOverride, chainId, dryRun, proofMode,
+        merkleProof, proofMap, tokenId,
+        spendLimits, priorityGas, parallel: true,
+      });
+    } catch (err) {
+      results = wallets.map(w => ({ walletAddress: w.address, status: 'failed', error: err.message }));
     }
   } else {
     // v18: shared sold-out signal across wallets
@@ -408,6 +431,7 @@ async function _scheduleAllWalletsInner({
           spendLimitEth: spendLimit,
           soldOutSignal: soldOutSig,
           useLaunchpadProof,
+          priorityGas,
           onAttempt: onWalletUpdate,
         });
       })

@@ -208,7 +208,7 @@ app.post('/api/mint', async (req, res) => {
     const {
       contractAddress, quantity, mintPrice, customFn, gweiOverride, parallel, chainId,
       merkleProof, proofMap, eip712Sigs, proofMode, dryRun, walletAddresses, walletFilter,
-      useFlashbots, useLaunchpadProof, merkleApiUrl, tokenId,
+      useFlashbots, useLaunchpadProof, merkleApiUrl, tokenId, priorityGas,
     } = req.body;
     if (!contractAddress || !/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) return res.status(400).json({ error: 'Invalid contract address' });
     if (!quantity || quantity < 1 || quantity > 100) return res.status(400).json({ error: 'Quantity must be 1–100' });
@@ -242,6 +242,7 @@ app.post('/api/mint', async (req, res) => {
       tokenId: tokenId || null,
       merkleApiUrl: merkleApiUrl || null,
       dryRun: dryRun === true,
+      priorityGas: priorityGas === true,
     });
 
     // v9: Record mint session to history (fetch collection metadata for chart display)
@@ -285,6 +286,7 @@ app.post('/api/schedule', async (req, res) => {
       walletFilter, walletAddresses,
       triggerMode, phaseCheckIntervalMs,
       gasEscalatePercent, proofMode, eip712Sigs, useLaunchpadProof, useFlashbots,
+      priorityGas,
     } = req.body;
     if (!contractAddress || !/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) return res.status(400).json({ error: 'Invalid contract address' });
 
@@ -348,6 +350,7 @@ app.post('/api/schedule', async (req, res) => {
       useLaunchpadProof: useLaunchpadProof === true,
       merkleApiUrl: merkleApiUrl || null,
       useFlashbots: useFlashbots === true,
+      priorityGas: priorityGas === true,
       onCountdown: () => {}, onStart: () => logger.info(`Schedule ${scheduleId} firing`),
       onWalletUpdate: () => {},
       onComplete: (results) => logger.info(`Schedule ${scheduleId} done: ${JSON.stringify(results)}`),

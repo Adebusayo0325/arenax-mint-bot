@@ -132,6 +132,7 @@ async function startExecFlow() {
   const fn        = document.getElementById('m-fn')?.value.trim() || null;
   const gwei      = parseFloat(document.getElementById('m-gwei')?.value) || null;
   const isDryRun  = document.getElementById('m-dryrun')?.checked || false;
+  const priorityGas = document.getElementById('m-priority-gas')?.checked || false;
   const proofMode = document.getElementById('m-proof-mode')?.value || 'opensea';
   const wallets   = getChecked('m-wallet-select');
 
@@ -161,7 +162,7 @@ async function startExecFlow() {
     contractAddress: contract, quantity: qty, mintPrice: price,
     customFn: fn, gweiOverride: gwei, parallel: true,
     chainId: currentChainId, merkleProof, proofMap, eip712Sigs,
-    proofMode, useFlashbots, useLaunchpadProof,
+    proofMode, useFlashbots, useLaunchpadProof, priorityGas,
     walletFilter: wallets,
   };
 
@@ -308,6 +309,7 @@ const CHAINS = {
   7777777: { name: 'Zora', symbol: 'ETH', explorer: 'https://explorer.zora.energy' },
   43114: { name: 'Avalanche', symbol: 'AVAX', explorer: 'https://snowscan.xyz' },
   33139: { name: 'ApeChain', symbol: 'APE', explorer: 'https://apescan.io' },
+  4663: { name: 'Robinhood Chain', symbol: 'ETH', explorer: 'https://robinhoodchain.blockscout.com' },
 };
 
 const API_BASE = window.location.origin;
@@ -1191,6 +1193,7 @@ async function doSchedule() {
   const price      = parseFloat(document.getElementById('s-price')?.value) || 0;
   const gwei       = parseFloat(document.getElementById('s-gwei')?.value) || null;
   const dryRun     = document.getElementById('s-dryrun')?.checked || false;
+  const priorityGas = document.getElementById('s-priority-gas')?.checked || false;
   const proofMode  = document.getElementById('s-proof-mode')?.value || 'opensea';
   const triggerMode = document.getElementById('s-trigger')?.value || 'time';
   const timeout    = parseInt(document.getElementById('s-timeout')?.value) || 60;
@@ -1211,7 +1214,7 @@ async function doSchedule() {
         quantity: qty, mintPrice: price, gweiOverride: gwei,
         dryRun, proofMode, triggerMode, chainId: currentChainId,
         timeoutSeconds: timeout, gasEscalatePercent: gasEsc,
-        walletFilter: wallets.length ? wallets : null,
+        walletFilter: wallets.length ? wallets : null, priorityGas,
       }),
     });
     setStatus('s-status', `✅ Scheduled — ID: ${data.scheduleId?.slice(0,8)}…`, 'ok');

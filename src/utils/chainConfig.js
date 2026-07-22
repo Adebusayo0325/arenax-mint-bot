@@ -142,6 +142,23 @@ const CHAINS = {
     defaultRpcEnvs: ['APECHAIN_RPC', 'CHAIN_33139_RPC'],
     publicRpcs: ['https://apechain.calderachain.xyz/http', 'https://rpc.apechain.com'],
   },
+  4663: {
+    name: 'Robinhood Chain', shortName: 'rh', symbol: 'ETH',
+    explorer: 'https://robinhoodchain.blockscout.com',
+    explorerApi: null, // Blockscout — no Etherscan-style key-based API confirmed yet
+    // NOTE: openseaChain slug is a best-guess from OpenSea's URL pattern
+    // (opensea.io/tokens/chain/robinhood) — this chain launched July 1 2026
+    // and I don't have a way to verify the exact API slug string live. If
+    // OpenSea-specific features (phase check, listings) 404/error on this
+    // chain specifically, this is the first thing to check/correct.
+    openseaChain: 'robinhood',
+    seaportAddress: '0x0000000000000068F116a894984e2DB1123eB395',
+    openseaConduit: '0x1e0049783f008a0085193e00003d00cd54003c71',
+    openseaConduitKey: '0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000',
+    openseaFeeRecipient: '0x0000a26b00c1F0DF003000390027140000fAa719',
+    defaultRpcEnvs: ['ROBINHOOD_RPC', 'CHAIN_4663_RPC'],
+    publicRpcs: ['https://rpc.mainnet.chain.robinhood.com'],
+  },
 };
 
 function getChain(chainId) {
@@ -153,7 +170,7 @@ function getChainList() {
 }
 
 function getChainEmoji(chainId) {
-  const map = { 1:'⟠', 8453:'🔵', 42161:'🔷', 10:'🔴', 137:'💜', 56:'🟡', 81457:'🔥', 59144:'🟢', 7777777:'🎨', 43114:'🔺', 33139:'🦍' };
+  const map = { 1:'⟠', 8453:'🔵', 42161:'🔷', 10:'🔴', 137:'💜', 56:'🟡', 81457:'🔥', 59144:'🟢', 7777777:'🎨', 43114:'🔺', 33139:'🦍', 4663:'🏹' };
   return map[parseInt(chainId)] || '🔗';
 }
 

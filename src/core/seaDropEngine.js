@@ -55,7 +55,7 @@ async function getSeaDropPhase(nftContract, chainId = 1) {
   };
 }
 
-async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quantity = 1, mintPriceEth, gweiOverride = null, chainId = 1, dryRun = false, spendLimitEth = null }) {
+async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quantity = 1, mintPriceEth, gweiOverride = null, chainId = 1, dryRun = false, spendLimitEth = null, priorityGas = false }) {
   const dropper = SEADROP_ADDRESSES[chainId];
   if (!dropper) return { walletAddress, status: 'failed', error: `SeaDrop not on chain ${chainId}` };
   const provider = await getProvider(chainId);
@@ -86,7 +86,7 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
   }
   const args     = [nftContract, OPENSEA_FEE_RECIPIENT, walletAddress, BigInt(quantity)];
   const balance  = await provider.getBalance(walletAddress);
-  const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(1.15, chainId);
+  const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(priorityGas?1.15:1.0, chainId, priorityGas);
   const gasLimit = BigInt(150000);
   const feePerGas = gasParams.maxFeePerGas || gasParams.gasPrice || BigInt(20e9);
   const required  = value + feePerGas * gasLimit;
@@ -126,7 +126,7 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
   return { walletAddress, status: 'success', fn: 'SeaDrop:mintPublic', txHash: tx.hash, gasUsed: receipt.gasUsed.toString() };
 }
 
-async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, quantity = 1, gweiOverride = null, proof = [], chainId = 1, dryRun = false, spendLimitEth = null }) {
+async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, quantity = 1, gweiOverride = null, proof = [], chainId = 1, dryRun = false, spendLimitEth = null, priorityGas = false }) {
   const dropper = SEADROP_ADDRESSES[chainId];
   if (!dropper) return { walletAddress, status: 'failed', error: `SeaDrop not on chain ${chainId}` };
   if (!proof?.length) return { walletAddress, status: 'failed', error: 'SeaDrop allowlist requires a Merkle proof' };
@@ -145,7 +145,7 @@ async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, qu
     try { await seadrop.mintAllowList.staticCall(...args, { value }); return { walletAddress, status: 'dry-run-ok', fn: 'SeaDrop:mintAllowList' }; }
     catch (e) { return { walletAddress, status: 'dry-run-fail', fn: 'SeaDrop:mintAllowList', error: e.message.slice(0, 120) }; }
   }
-  const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(1.15, chainId);
+  const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(priorityGas?1.15:1.0, chainId, priorityGas);
   const tx = await seadrop.mintAllowList(...args, { value, gasLimit: 180000n, ...gasParams });
   logger.info(`[SeaDrop] mintAllowList tx ${tx.hash} [${walletAddress.slice(0, 8)}]`);
   const receipt = await tx.wait();

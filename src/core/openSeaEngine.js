@@ -261,10 +261,10 @@ async function _exec({ tx, walletAddress, signer, provider, gasParams, effective
 }
 
 // ── MAIN MINT (3 routes, self-adapting) ──────────────────────────────────────
-async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quantity=1, gweiOverride=null, chainId=1, dryRun=false, spendLimitEth=null }) {
+async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quantity=1, gweiOverride=null, chainId=1, dryRun=false, spendLimitEth=null, priorityGas=false }) {
   const provider     = await getProvider(chainId);
   const signer       = new ethers.Wallet(privateKey, provider);
-  const gasParams    = gweiOverride ? await buildGasParamsFromOverride(gweiOverride,chainId) : await getGasParams(1.15,chainId);
+  const gasParams    = gweiOverride ? await buildGasParamsFromOverride(gweiOverride,chainId) : await getGasParams(priorityGas?1.15:1.0,chainId,priorityGas);
   const effectiveFee = await getEffectiveFeePerGas(chainId);
   const chainSlug    = CHAIN_SLUG[chainId]||'ethereum';
   const log          = [];

@@ -8,7 +8,17 @@ const logger = require('../utils/logger');
  *   - maxFeePerGas = baseFee * 1.35 + tip (cap you'll pay at most)
  * You only ever pay baseFee + tip, never the full maxFee unless base spikes.
  */
-async function getGasParams(speedMultiplier = 1.15, chainId) {
+/**
+ * FIX: previously "auto" gas (no explicit gweiOverride) ALWAYS ran through
+ * this function with a 1.15x competitive-bidding multiplier AND a forced
+ * 1 gwei minimum tip — meant for racing other minters at drop time. But that
+ * was applied unconditionally, even for a relaxed/non-competitive mint where
+ * the user just wants the cheapest successful tx. There was no cheaper mode
+ * at all. `competitive` now controls that:
+ *   competitive=true  (Priority Gas checked)  — 1.15x tip + 1 gwei floor (old behavior, for racing a drop)
+ *   competitive=false (default, unchecked)    — 1.0x tip, no artificial floor (network's real current suggestion)
+ */
+async function getGasParams(speedMultiplier = 1.15, chainId, competitive = true) {
   const provider = await getProvider(chainId);
   const feeData = await provider.getFeeData();
 
@@ -20,22 +30,31 @@ async function getGasParams(speedMultiplier = 1.15, chainId) {
     // (e.g. 0.26 gwei) during quiet periods, but a GTD mint needs to compete
     // for block inclusion against other minters bidding higher. A 0.3 gwei
     // auto-tip can leave a tx pending indefinitely during any gas spike.
-    // Enforce a sane floor of 1 gwei on mainnet-style chains so "auto" mode
-    // isn't dangerously passive. Users can still override via gweiOverride.
-    const MIN_TIP_WEI = BigInt(1e9); // 1 gwei floor
-    if (tip < MIN_TIP_WEI) tip = MIN_TIP_WEI;
+    // Enforce a sane floor of 1 gwei on mainnet-style chains so competitive
+    // mode isn't dangerously passive. Users can still override via gweiOverride.
+    // FIX (v26): this floor ONLY applies in competitive mode now — economy
+    // mode should actually be cheap, not "competitive minus a little."
+    if (competitive) {
+      const MIN_TIP_WEI = BigInt(1e9); // 1 gwei floor
+      if (tip < MIN_TIP_WEI) tip = MIN_TIP_WEI;
+    }
 
     // Estimate current base fee from fee data
     // EIP-1559: maxFeePerGas = baseFee * 2 + tip (ethers default)
     // Actual base fee ≈ (maxFeePerGas - maxPriorityFeePerGas) / 2
     const estimatedBase = (feeData.maxFeePerGas - feeData.maxPriorityFeePerGas) / 2n;
 
-    // Give headroom for 3 blocks of base fee increase (max 12.5%/block ≈ 1.42x for 3 blocks)
-    const maxFee = BigInt(Math.ceil(Number(estimatedBase) * 1.45 * speedMultiplier)) + tip;
+    // Competitive mode pads 3 blocks of base-fee headroom (max 12.5%/block ≈
+    // 1.42x) so the tx doesn't get stuck if base fee jumps right at drop time.
+    // Economy mode only pads 1 block (~1.13x) — this is a CEILING (the most
+    // you'll ever pay if base fee spikes), not what you typically pay, but
+    // there's no reason to reserve 3-blocks of headroom for a non-racing mint.
+    const headroom = competitive ? 1.45 : 1.13;
+    const maxFee = BigInt(Math.ceil(Number(estimatedBase) * headroom * speedMultiplier)) + tip;
     const finalMax = maxFee < tip * 2n ? tip * 2n : maxFee;
 
     logger.info(
-      `Gas EIP-1559: base≈${(Number(estimatedBase)/1e9).toFixed(2)} ` +
+      `Gas EIP-1559 [${competitive?'competitive':'economy'}]: base≈${(Number(estimatedBase)/1e9).toFixed(2)} ` +
       `tip=${(Number(tip)/1e9).toFixed(2)} max=${(Number(finalMax)/1e9).toFixed(2)} gwei`
     );
     return { maxFeePerGas: finalMax, maxPriorityFeePerGas: tip };
@@ -43,7 +62,7 @@ async function getGasParams(speedMultiplier = 1.15, chainId) {
 
   // Legacy chains (BSC, etc.)
   const gasPrice = BigInt(Math.ceil(Number(feeData.gasPrice) * speedMultiplier));
-  logger.info(`Gas legacy: ${(Number(gasPrice)/1e9).toFixed(2)} gwei`);
+  logger.info(`Gas legacy [${competitive?'competitive':'economy'}]: ${(Number(gasPrice)/1e9).toFixed(2)} gwei`);
   return { gasPrice };
 }
 

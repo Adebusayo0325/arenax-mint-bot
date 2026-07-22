@@ -221,9 +221,9 @@ async function detectMintFunction(contract, abiJson = null, standard = 'ERC721',
 }
 
 // ── GAS HELPER ───────────────────────────────────────────────────────────────
-async function resolveGasParams(gweiOverride, chainId) {
+async function resolveGasParams(gweiOverride, chainId, priorityGas = false) {
   if (gweiOverride) return buildGasParamsFromOverride(gweiOverride, chainId);
-  return getGasParams(1.15, chainId);
+  return getGasParams(priorityGas ? 1.15 : 1.0, chainId, priorityGas);
 }
 
 // ── ERROR DECODER ─────────────────────────────────────────────────────────────
@@ -433,6 +433,7 @@ async function mintViaFlashbots({
   merkleProof = [], proofMap = null,
   eip712Sigs = null, tokenId = 1,
   onSimPassed = null,   // v18: callback({ gasUsed, targetBlock, blockRange }) emitted before relay submit
+  priorityGas = false,
 }) {
   const authKey = process.env.FLASHBOTS_AUTH_KEY;
   if (!authKey) throw new Error('FLASHBOTS_AUTH_KEY not set in .env. See mintEngine.js SETUP section.');
@@ -448,10 +449,11 @@ async function mintViaFlashbots({
   const provider   = await getProvider(chainId);
   const authSigner = new ethers.Wallet(authKey);
   const fbProvider = await FlashbotsProvider.create(provider, authSigner, undefined, chainId === 11155111);
-  const gasParams  = await resolveGasParams(gweiOverride, chainId);
+  const gasParams  = await resolveGasParams(gweiOverride, chainId, priorityGas);
   const totalCost  = mintPrice * quantity;
   const value      = ethers.parseEther(totalCost === 0 ? '0' : totalCost.toFixed(18).replace(/\.?0+$/, '') || '0');
   const blockNumber = await provider.getBlockNumber();
+
 
   const signedTxs = [];
   for (const w of wallets) {
@@ -514,6 +516,7 @@ async function mintFromWallet({
   spendLimitEth = null,             // max ETH this wallet may spend this run
   soldOutSignal = null,             // shared SoldOutSignal instance
   useLaunchpadProof = false,        // try launchpad APIs before manual proof
+  priorityGas = false,              // false=economy (default, cheap), true=competitive (racing a live drop)
 }) {
   // ── v18: Sold-out abort ──
   if (soldOutSignal?.triggered) {
@@ -598,7 +601,7 @@ async function mintFromWallet({
     }
   }
 
-  const gasParams  = await resolveGasParams(effectiveGweiOverride, chainId);
+  const gasParams  = await resolveGasParams(effectiveGweiOverride, chainId, priorityGas);
   const effectiveFee = await getEffectiveFeePerGas(chainId);
   const feePerGas  = gasParams.maxFeePerGas || gasParams.gasPrice || BigInt(20e9);
   const totalCost  = mintPrice * quantity;
@@ -933,10 +936,11 @@ async function mintFromAllWallets({
   useLaunchpadProof = false,
   spendLimits = null,
   onSimPassed = null,
+  priorityGas = false, // false=economy (default, cheap), true=competitive (racing a live drop)
 }) {
   if (useFlashbots || proofMode === 'flashbots') {
     logger.info(`FLASHBOTS route: ${wallets.length} wallets`);
-    return mintViaFlashbots({ wallets, contractAddress, quantity, mintPrice, customFn, gweiOverride, chainId, merkleProof, proofMap, eip712Sigs, tokenId, onSimPassed });
+    return mintViaFlashbots({ wallets, contractAddress, quantity, mintPrice, customFn, gweiOverride, chainId, merkleProof, proofMap, eip712Sigs, tokenId, onSimPassed, priorityGas });
   }
 
   // ── Auto-detect SeaDrop if user didn't select SeaDrop mode ──────────────
@@ -968,7 +972,7 @@ async function mintFromAllWallets({
     logger.info(`[OpenSea] SIWE/Seaport routing for ${wallets.length} wallets on chain ${chainId}`);
     return Promise.all(wallets.map(w => {
       const spendLimit = spendLimits ? (spendLimits[w.address] || spendLimits[w.address.toLowerCase()] || null) : (w.spendLimit || null);
-      return mintViaOpenSea({ contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit });
+      return mintViaOpenSea({ contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit, priorityGas });
     }));
   }
 
@@ -977,8 +981,8 @@ async function mintFromAllWallets({
     return Promise.all(wallets.map(w => {
       const spendLimit = spendLimits ? (spendLimits[w.address] || spendLimits[w.address.toLowerCase()] || null) : (w.spendLimit || null);
       const proof = proofMap?.[w.address] || (Array.isArray(merkleProof) && merkleProof.length ? merkleProof : []);
-      if (proof.length) return mintSeaDropAllowList({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, proof, chainId, dryRun, spendLimitEth: spendLimit });
-      return mintSeaDropPublic({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, mintPriceEth: mintPrice, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit });
+      if (proof.length) return mintSeaDropAllowList({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, gweiOverride, proof, chainId, dryRun, spendLimitEth: spendLimit, priorityGas });
+      return mintSeaDropPublic({ nftContract: contractAddress, walletAddress: w.address, privateKey: w.privateKey, quantity, mintPriceEth: mintPrice, gweiOverride, chainId, dryRun, spendLimitEth: spendLimit, priorityGas });
     }));
   }
 
@@ -1036,7 +1040,7 @@ async function mintFromAllWallets({
   const sharedParams = {
     contractAddress, quantity, mintPrice, customFn, gweiOverride, chainId, dryRun,
     standard: detectedStandard, tokenId, merkleApiUrl, skipMaxCheck: false,
-    useLaunchpadProof, soldOutSignal,
+    useLaunchpadProof, soldOutSignal, priorityGas,
   };
 
   if (parallel) {
