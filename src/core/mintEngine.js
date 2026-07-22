@@ -478,6 +478,7 @@ async function mintViaFlashbots({
   const simResult = await fbProvider.simulate(signedTxs, blockNumber + 1);
   if ('error' in simResult) {
     logger.warn(`FB sim error: ${simResult.error.message}`);
+    wallets.forEach(w => resetNonce(w.address)); // sim failed — none of these nonces were consumed on-chain
     return [{ status: 'sim_failed', error: simResult.error.message, bundleSize: signedTxs.length }];
   }
   const simGasUsed = simResult.results?.reduce((s, r) => s + (Number(r.gasUsed) || 0), 0) || 0;
@@ -496,6 +497,13 @@ async function mintViaFlashbots({
     }
     logger.info(`Bundle missed block ${targetBlock}`);
   }
+  // FIX: bundle never landed in any of the 5 blocks tried — none of these
+  // wallets' nonces actually advanced on-chain, but getNextNonce() had
+  // already cached next+1 for each of them optimistically. Without this
+  // reset, retrying within the 30s TTL would sign with a nonce that's one
+  // ahead of reality, and the retry would sit stuck waiting for a nonce gap
+  // that never fills.
+  wallets.forEach(w => resetNonce(w.address));
   return [{ status: 'bundle_not_included', message: 'Bundle not included in 5 blocks — raise gas or switch to normal mode' }];
 }
 

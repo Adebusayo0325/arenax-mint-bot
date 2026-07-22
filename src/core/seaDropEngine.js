@@ -104,9 +104,11 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
     }
   }
   let tx, receipt;
+  const { trackTx } = require('./txManager');
   try {
     tx = await seadrop.mintPublic(...args, { value, gasLimit, ...gasParams });
     logger.info(`[SeaDrop] mintPublic tx ${tx.hash} [${walletAddress.slice(0, 8)}]`);
+    trackTx(walletAddress, tx.hash, tx.nonce, chainId);
     receipt = await tx.wait();
   } catch (e) {
     if (e.message?.includes('IncorrectPayment') || e.message?.includes('incorrect payment')) {
@@ -120,6 +122,7 @@ async function mintSeaDropPublic({ nftContract, walletAddress, privateKey, quant
           error: `⚠️ Price changed mid-mint and new price ${ethers.formatEther(freshDrop.mintPrice)} ETH/NFT exceeds spend limit ${spendLimitEth} ETH. Aborted before retry.` };
       }
       tx = await seadrop.mintPublic(...args, { value: freshValue, gasLimit, ...gasParams });
+      trackTx(walletAddress, tx.hash, tx.nonce, chainId);
       receipt = await tx.wait();
     } else throw e;
   }
@@ -148,6 +151,8 @@ async function mintSeaDropAllowList({ nftContract, walletAddress, privateKey, qu
   const gasParams = gweiOverride ? await buildGasParamsFromOverride(gweiOverride, chainId) : await getGasParams(priorityGas?1.15:1.0, chainId, priorityGas);
   const tx = await seadrop.mintAllowList(...args, { value, gasLimit: 180000n, ...gasParams });
   logger.info(`[SeaDrop] mintAllowList tx ${tx.hash} [${walletAddress.slice(0, 8)}]`);
+  const { trackTx } = require('./txManager');
+  trackTx(walletAddress, tx.hash, tx.nonce, chainId);
   const receipt = await tx.wait();
   return { walletAddress, status: 'success', fn: 'SeaDrop:mintAllowList', txHash: tx.hash, gasUsed: receipt.gasUsed.toString() };
 }

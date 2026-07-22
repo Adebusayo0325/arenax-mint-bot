@@ -10,6 +10,7 @@ const config = require('../config');
 const { DEFAULT_CHAIN_ID } = config;
 const { getProvider } = require('../utils/rpcManager');
 const { getGasParams, getFundingGasParams } = require('./gasOracle');
+const { getNextNonce, resetNonce } = require('./nonceManager');
 const logger = require('../utils/logger');
 
 // Helper: always reads master key at call-time so runtime /api/master/set works.

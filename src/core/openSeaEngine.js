@@ -235,7 +235,7 @@ async function isOpenSeaDrop(contractAddress, chainId=1) {
 }
 
 // ── TX EXECUTOR ───────────────────────────────────────────────────────────────
-async function _exec({ tx, walletAddress, signer, provider, gasParams, effectiveFee, dryRun, spendLimitEth, fn }) {
+async function _exec({ tx, walletAddress, signer, provider, gasParams, effectiveFee, dryRun, spendLimitEth, fn, chainId }) {
   const value = tx.value?BigInt(tx.value):0n;
   const data  = tx.data||tx.input||'0x';
   if (spendLimitEth!==null && parseFloat(ethers.formatEther(value))>spendLimitEth)
@@ -252,6 +252,8 @@ async function _exec({ tx, walletAddress, signer, provider, gasParams, effective
   }
   const sent = await signer.sendTransaction({to:tx.to,data,value,gasLimit,...gasParams});
   logger.info(`[OS/${fn}] tx ${sent.hash} [${walletAddress.slice(0,8)}]`);
+  const { trackTx } = require('./txManager');
+  trackTx(walletAddress, sent.hash, sent.nonce, chainId);
   const receipt = await sent.wait();
   return {
     walletAddress, status:receipt.status===1?'success':'failed', fn,
@@ -276,7 +278,7 @@ async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quan
     try {
       const tx = await osFetchCalldataGQL(signer, contractAddress, chainSlug, quantity, cookie);
       log.push('GQL:ok');
-      return await _exec({tx,walletAddress,signer,provider,gasParams,effectiveFee,dryRun,spendLimitEth,fn:'SIWE+GQL'});
+      return await _exec({tx,walletAddress,signer,provider,gasParams,effectiveFee,dryRun,spendLimitEth,fn:'SIWE+GQL',chainId});
     } catch(e) { log.push(`GQL:${e.message.slice(0,60)}`); logger.warn(`[OS/GQL] ${e.message}`); }
   } catch(e) { log.push(`SIWE:${e.message.slice(0,80)}`); logger.warn(`[OS/SIWE] ${e.message}`); }
 
@@ -290,7 +292,7 @@ async function mintViaOpenSea({ contractAddress, walletAddress, privateKey, quan
         const fd = await getFulfillmentData(order.order_hash, order.protocol_address||SEAPORT, walletAddress, chainId);
         const tx = fd?.fulfillment_data?.transaction;
         if (!tx) { results.push({status:'failed',error:'No tx from fulfillment_data'}); continue; }
-        results.push(await _exec({tx,walletAddress,signer,provider,gasParams,effectiveFee,dryRun,spendLimitEth,fn:'SeaportOrder'}));
+        results.push(await _exec({tx,walletAddress,signer,provider,gasParams,effectiveFee,dryRun,spendLimitEth,fn:'SeaportOrder',chainId}));
       } catch(e) { results.push({status:'failed',error:e.message?.slice(0,120)}); }
     }
     const ok = results.filter(r=>r.status==='success'||r.status==='dry-run-ok').length;

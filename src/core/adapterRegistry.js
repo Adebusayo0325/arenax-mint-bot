@@ -77,7 +77,7 @@ const openSeaAdapter = {
   mintFn:'fulfillAvailableAdvancedOrders', routeTo:'opensea',
 };
 
-const ADAPTERS = [seaDropAdapter, manifoldAdapter, thirdwebAdapter, zoraAdapter, genericAdapter];
+const ADAPTERS = [seaDropAdapter, openSeaAdapter, manifoldAdapter, thirdwebAdapter, zoraAdapter, genericAdapter];
 
 async function detectAdapter(contractAddress, chainId = 1) {
   const results = await Promise.all(

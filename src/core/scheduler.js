@@ -377,6 +377,27 @@ async function _scheduleAllWalletsInner({
   }
   logger.info(`FIRING — ${wallets.length} wallets chain=${chainId} flashbots=${useFlashbots} gasEscalate=${gasEscalatePercent}%`);
 
+  // FIX: mirrors the exact same auto-detect block mintFromAllWallets() runs
+  // in mintEngine.js. Without this, a schedule created via Telegram (which
+  // only ever sends proofMode='auto', never the literal string 'opensea')
+  // would never resolve to OpenSea/SeaDrop routing below — even after
+  // adding the explicit 'opensea'/'seaport'/'seadrop' branch, since that
+  // branch only matches if one of those literal strings is already set.
+  // The webapp's Schedule form sends the literal strings directly, so it
+  // didn't need this — but Telegram does.
+  if (proofMode !== 'seadrop' && proofMode !== 'flashbots' && proofMode !== 'eip712') {
+    try {
+      const { detectAdapter } = require('./adapterRegistry');
+      const adapter = await detectAdapter(contractAddress, chainId);
+      if (adapter.routeTo && adapter.routeTo !== proofMode) {
+        logger.info(`[Schedule/AutoRoute] ${adapter.name} → ${adapter.routeTo} for ${contractAddress.slice(0,10)}`);
+        proofMode = adapter.routeTo;
+      }
+    } catch (adErr) {
+      logger.warn(`[Schedule/AutoRoute] adapter detect failed: ${adErr.message.slice(0,100)}`);
+    }
+  }
+
   let results;
 
   if (useFlashbots || proofMode === 'flashbots') {

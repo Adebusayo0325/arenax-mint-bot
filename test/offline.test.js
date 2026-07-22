@@ -478,6 +478,45 @@ ok('seadrop proofMode routes through mintFromAllWallets', resolveScheduleRoute('
 ok('flashbots still takes priority over proofMode', resolveScheduleRoute('opensea', true) === 'flashbots');
 ok('generic/none proofMode still uses the retry loop (unchanged behavior)', resolveScheduleRoute('none', false) === 'genericRetryLoop');
 
+section('25. Adapter registry — openSeaAdapter is now actually reachable (was defined but missing from the ADAPTERS array)');
+const adapterRegistrySource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/adapterRegistry.js'), 'utf8');
+ok('detectAdapter is still exported', /module\.exports\s*=\s*\{[^}]*detectAdapter/.test(adapterRegistrySource));
+const adaptersLine = adapterRegistrySource.match(/const ADAPTERS = \[([^\]]+)\]/)?.[1] || '';
+ok('openSeaAdapter is present in the ADAPTERS array', adaptersLine.includes('openSeaAdapter'));
+ok('seaDropAdapter is still present too (didn\'t get removed by accident)', adaptersLine.includes('seaDropAdapter'));
+ok('genericAdapter is still last (catch-all fallback preserved)', adaptersLine.trim().endsWith('genericAdapter'));
+
+section('26. fundingManager — Auto-Balance no longer throws ReferenceError (getNextNonce/resetNonce were used but never imported)');
+const fundingManagerSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/fundingManager.js'), 'utf8');
+ok('getNextNonce is now imported', /require\(['"]\.\/nonceManager['"]\)/.test(fundingManagerSource) && fundingManagerSource.includes('getNextNonce'));
+ok('resetNonce is now imported', fundingManagerSource.includes('resetNonce'));
+// Regression guard: confirms the import line actually exists, not just usage
+ok('import statement present (not just usage)', /const\s*\{\s*getNextNonce,\s*resetNonce\s*\}\s*=\s*require/.test(fundingManagerSource));
+
+section('27. redisClient — ioredis require is now guarded (was unguarded, would crash the whole server if the optional dep was ever missing)');
+const redisClientSource = require('fs').readFileSync(require('path').join(__dirname, '../src/utils/redisClient.js'), 'utf8');
+ok('ioredis require is wrapped in try/catch', /try\s*\{[^}]*require\(['"]ioredis['"]\)/.test(redisClientSource));
+ok('getRedis() checks for null Redis before using it', redisClientSource.includes('if (!Redis) return null'));
+
+section('28. mintEngine Flashbots — nonce cache is reset on bundle failure (was: resetNonce imported but never called, poisoning retries)');
+const mintEngineSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/mintEngine.js'), 'utf8');
+const flashbotsFnMatch = mintEngineSource.match(/async function mintViaFlashbots[\s\S]*?\n}\n/);
+ok('resetNonce is actually called inside mintViaFlashbots now', flashbotsFnMatch && flashbotsFnMatch[0].includes('resetNonce('));
+
+section('29. launchpadProofs — probeSeaDrop no longer calls invented OpenSea endpoints');
+const launchpadSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/launchpadProofs.js'), 'utf8');
+ok('no more /drops/.../sign or /drops/.../allowlist fake endpoint calls', !launchpadSource.includes('/drops/${contractAddress}/sign') && !launchpadSource.includes('/drops/${contractAddress}/allowlist'));
+
+section('30. Transaction tracking — OpenSea and SeaDrop mints are now visible to Speed-Up/Cancel (were invisible before)');
+const openSeaEngineSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/openSeaEngine.js'), 'utf8');
+const seaDropEngineSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/seaDropEngine.js'), 'utf8');
+ok('openSeaEngine._exec now calls trackTx', openSeaEngineSource.includes("require('./txManager')") && openSeaEngineSource.includes('trackTx('));
+ok('seaDropEngine mintPublic now calls trackTx', seaDropEngineSource.includes('trackTx('));
+
+section('31. Robinhood Chain also added to Telegram bot keyboard (webapp-only last round — now consistent)');
+const keyboardSource = require('fs').readFileSync(require('path').join(__dirname, '../src/bot/keyboard.js'), 'utf8');
+ok('chain_4663 button present in Telegram chainMenu', keyboardSource.includes('chain_4663'));
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);

@@ -21,7 +21,8 @@ const chainMenu = {
     [{ text: '💜 Polygon',        callback_data: 'chain_137' },    { text: '🟡 BNB Chain',        callback_data: 'chain_56' }],
     [{ text: '🔥 Blast',          callback_data: 'chain_81457' },  { text: '🟢 Linea',            callback_data: 'chain_59144' }],
     [{ text: '🎨 Zora',           callback_data: 'chain_7777777' },{ text: '🔺 Avalanche',        callback_data: 'chain_43114' }],
-    [{ text: '🔵 ApeChain',       callback_data: 'chain_33139' },  { text: '🔙 Back',             callback_data: 'menu_main' }],
+    [{ text: '🔵 ApeChain',       callback_data: 'chain_33139' },  { text: '🏹 Robinhood Chain', callback_data: 'chain_4663' }],
+    [{ text: '🔙 Back',           callback_data: 'menu_main' }],
   ],
 };
 

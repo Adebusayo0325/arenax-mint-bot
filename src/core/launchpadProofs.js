@@ -351,77 +351,24 @@ async function probeMagicEden(contractAddress, walletAddress, chainId) {
 }
 
 async function probeSeaDrop(contractAddress, walletAddress, chainId) {
-  // SeaDrop / OpenSea drops — ALL sigs and merkle proofs come from OpenSea's API.
-  // This covers both:
-  //   mintSigned   → returns { signature, mintParams, salt, feeRecipient }
-  //   mintAllowList → returns { proof: ['0x...'] }
-  // The same endpoint handles both — OpenSea returns whichever is relevant.
-
-  const OPENSEA_API_KEY = process.env.OPENSEA_API_KEY || '';
-  const headers = {
-    'Accept': 'application/json',
-    'User-Agent': 'Mozilla/5.0',
-    ...(OPENSEA_API_KEY ? { 'X-API-KEY': OPENSEA_API_KEY } : {}),
-  };
-
-  const chainSlug = {
-    1:       'ethereum',
-    8453:    'base',
-    42161:   'arbitrum',
-    10:      'optimism',
-    137:     'matic',
-    11155111:'sepolia',
-  }[chainId] || 'ethereum';
-
-  // v2 drops signing endpoint (mintSigned)
-  const sigUrls = [
-    `https://api.opensea.io/api/v2/drops/${contractAddress}/sign?wallet_address=${walletAddress}`,
-    `https://api.opensea.io/v2/seadrop/${contractAddress}/sign?wallet=${walletAddress}`,
-  ];
-
-  // v2 allowlist proof endpoint (mintAllowList / merkle)
-  const proofUrls = [
-    `https://api.opensea.io/api/v2/drops/${contractAddress}/allowlist?wallet_address=${walletAddress}`,
-    `https://api.opensea.io/v2/seadrop/${contractAddress}/allowlist?wallet=${walletAddress}&chain=${chainSlug}`,
-  ];
-
-  // Try sig first (mintSigned contracts)
-  for (const url of sigUrls) {
-    try {
-      const json = await fetchJSON(url, { headers });
-      const sig =
-        json?.signature || json?.sig || json?.data?.signature ||
-        json?.signed_message || json?.mintSignature || null;
-      const mintParams =
-        json?.mintParams || json?.mint_params || json?.data?.mintParams || null;
-      const salt = json?.salt ?? json?.data?.salt ?? null;
-      const feeRecipient =
-        json?.feeRecipient || json?.fee_recipient ||
-        json?.data?.feeRecipient || ethers.ZeroAddress;
-
-      if (sig && sig.startsWith('0x')) {
-        logger.info(`[SeaDrop/OpenSea] Got mintSigned sig for ${walletAddress.slice(0, 8)}`);
-        return { proof: [], sig, mintParams, salt, feeRecipient, platform: 'seadrop', source: url };
-      }
-    } catch (e) {
-      logger.warn(`[SeaDrop] sig probe failed (${url.slice(0, 70)}): ${e.message.slice(0, 50)}`);
-    }
-  }
-
-  // Then try merkle proof (mintAllowList contracts)
-  for (const url of proofUrls) {
-    try {
-      const json = await fetchJSON(url, { headers });
-      const proof = extractProofArray(json);
-      if (proof.length) {
-        logger.info(`[SeaDrop/OpenSea] Got allowlist proof (${proof.length} leaves) for ${walletAddress.slice(0, 8)}`);
-        return { proof, sig: null, platform: 'seadrop', source: url };
-      }
-    } catch (e) {
-      logger.warn(`[SeaDrop] proof probe failed (${url.slice(0, 70)}): ${e.message.slice(0, 50)}`);
-    }
-  }
-
+  // FIX: this used to call /v2/drops/{contract}/sign and /v2/seadrop/{contract}/allowlist
+  // on api.opensea.io — neither exists in OpenSea's public API (confirmed against
+  // their real v2 reference docs). Every call here always 404'd; it just cost
+  // two guaranteed-fail network round trips before falling through to the
+  // other platform probers.
+  //
+  // The real, working mechanism for OpenSea/SeaDrop drops is authenticated
+  // SIWE + their internal GraphQL (see openSeaEngine.js's osSiweLogin +
+  // osFetchCalldataGQL) — that requires signing with the actual wallet
+  // private key, which this function doesn't have (it only receives an
+  // address, by design, since proof-fetching here is meant to be read-only
+  // and callable before committing to a specific signer). Bridging that
+  // would need a larger refactor to pass a signer through, not a URL fix.
+  //
+  // Until then: don't guess at endpoints that don't exist. If this is an
+  // OpenSea-hosted drop, use proofMode='opensea' instead of "Launchpad
+  // Auto-Proof" — that's the path that actually talks to OpenSea correctly.
+  logger.info(`[SeaDrop/OpenSea] No public REST API exists for drop sig/proof fetching — use proofMode='opensea' (SIWE) instead of Launchpad Auto-Proof for OpenSea-hosted drops.`);
   return null;
 }
 

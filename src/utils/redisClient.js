@@ -6,14 +6,23 @@
  *
  * Never throws — all methods are safe to call whether Redis is up or not.
  */
-const Redis  = require('ioredis');
 const config = require('../config');
 const logger = require('./logger');
+
+// FIX: ioredis is an optionalDependency (package.json) — if it's ever
+// skipped or fails to install on a given platform, `require('ioredis')`
+// throws synchronously. scheduler.js requires this file at the top level,
+// so that throw would previously crash server startup entirely — directly
+// contradicting this file's own "never throws" promise. Guarded now.
+let Redis = null;
+try { Redis = require('ioredis'); }
+catch (e) { logger.warn(`[Redis] ioredis package not installed — Redis disabled, JSON fallback active (${e.message})`); }
 
 let _client = null;
 
 async function getRedis() {
   if (_client) return _client;
+  if (!Redis) return null;
   const url = config.REDIS_URL;
   if (!url) return null;
 
