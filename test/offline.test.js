@@ -517,6 +517,36 @@ section('31. Robinhood Chain also added to Telegram bot keyboard (webapp-only la
 const keyboardSource = require('fs').readFileSync(require('path').join(__dirname, '../src/bot/keyboard.js'), 'utf8');
 ok('chain_4663 button present in Telegram chainMenu', keyboardSource.includes('chain_4663'));
 
+// ─── INLINE COPY of the new /api/nfts/all wallet-filter parsing logic ──────
+function parseWalletFilter(walletsParam) {
+  return walletsParam
+    ? new Set(String(walletsParam).split(',').map(a => a.trim().toLowerCase()).filter(Boolean))
+    : null;
+}
+function applyWalletFilter(wallets, filterSet) {
+  if (!filterSet) return wallets;
+  return wallets.filter(w => filterSet.has(w.address.toLowerCase()));
+}
+
+section('32. NFT Portfolio wallet filter — empty/absent means show all (backward compatible), populated means narrow');
+const sampleWallets = [
+  { address: '0xAAA0000000000000000000000000000000000A', label: 'W1' },
+  { address: '0xBBB0000000000000000000000000000000000B', label: 'W2' },
+  { address: '0xCCC0000000000000000000000000000000000C', label: 'W3' },
+];
+ok('no filter param -> null -> all wallets returned (unchanged old behavior)',
+   applyWalletFilter(sampleWallets, parseWalletFilter(undefined)).length === 3);
+ok('empty string filter -> null -> all wallets returned',
+   applyWalletFilter(sampleWallets, parseWalletFilter('')).length === 3);
+ok('single wallet filter narrows to exactly that wallet',
+   applyWalletFilter(sampleWallets, parseWalletFilter('0xAAA0000000000000000000000000000000000A')).length === 1);
+ok('comma-separated filter narrows to exactly those wallets',
+   applyWalletFilter(sampleWallets, parseWalletFilter('0xaaa0000000000000000000000000000000000a,0xccc0000000000000000000000000000000000c')).length === 2);
+ok('filter is case-insensitive (checksum vs lowercase)',
+   applyWalletFilter(sampleWallets, parseWalletFilter('0xbbb0000000000000000000000000000000000b'))[0].label === 'W2');
+ok('filter matching nothing returns empty array, not an error',
+   applyWalletFilter(sampleWallets, parseWalletFilter('0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead')).length === 0);
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);

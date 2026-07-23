@@ -517,7 +517,13 @@ app.get('/api/nfts/all', async (req, res) => {
   try {
     const chainId = parseInt(req.query.chainId || 1);
     const contractFilter = req.query.contract || null; // v19: filter by contract
-    const wallets = getWallets();
+    // Wallet filter: comma-separated addresses. Omit entirely to keep the
+    // old "show everything" behavior — this is purely additive.
+    const walletFilter = req.query.wallets
+      ? new Set(String(req.query.wallets).split(',').map(a => a.trim().toLowerCase()).filter(Boolean))
+      : null;
+    let wallets = getWallets();
+    if (walletFilter) wallets = wallets.filter(w => walletFilter.has(w.address.toLowerCase()));
     let all = [];
     const errors = [];
     for (const w of wallets) {

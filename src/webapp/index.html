@@ -1005,8 +1005,18 @@
       <span class="card-title">NFT Portfolio</span>
       <button class="btn btn-outline btn-sm" onclick="loadNFTs()">↻ Refresh</button>
     </div>
-    <div class="card-body" id="nft-list">
-      <div class="empty">Click refresh to load NFTs</div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">Wallets to show <span style="color:var(--text-dim);font-weight:400">(none checked = show all)</span></label>
+        <div class="wallet-sel-actions" style="margin-bottom:8px">
+          <button class="btn btn-outline btn-sm" onclick="selAll('nft-wallet-select')">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselAll('nft-wallet-select')">Deselect</button>
+        </div>
+        <div class="wallet-checklist" id="nft-wallet-select"></div>
+      </div>
+      <div id="nft-list">
+        <div class="empty">Click refresh to load NFTs</div>
+      </div>
     </div>
   </div>
 
@@ -1178,6 +1188,18 @@
 <script src="app.js"></script>
 <script>
 // ── Tab routing ────────────────────────────────────────────────────
+// Single source of truth for "which wallet-checklist does this page need
+// loaded" — used by the tab click handler, switchPage(), and the chain-
+// change refresh below. Previously this exact 3-line if-block was
+// duplicated in three separate places (a real drift risk — adding a new
+// page's checklist meant remembering to update all three).
+function loadPageWalletChecks(page) {
+  if (page === 'mint') loadWalletChecks('m-wallet-select');
+  if (page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
+  if (page === 'fund') loadWalletChecks('f-wallet-select');
+  if (page === 'nft') loadWalletChecks('nft-wallet-select');
+}
+
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -1188,9 +1210,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
       page.classList.add('active');
       window.scrollTo({ top: 0, behavior: 'instant' });
       if (tab.dataset.page === 'overview') loadOverview();
-      if (tab.dataset.page === 'mint') loadWalletChecks('m-wallet-select');
-      if (tab.dataset.page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
-      if (tab.dataset.page === 'fund') loadWalletChecks('f-wallet-select');
+      loadPageWalletChecks(tab.dataset.page);
       if (tab.dataset.page === 'nft') { loadNFTs(); populateListWallet(); }
       if (tab.dataset.page === 'wallets') loadWallets();
       if (tab.dataset.page === 'history') loadHistory();
@@ -1210,9 +1230,7 @@ function switchPage(page) {
   const target = document.getElementById('page-' + page);
   if (target) { target.classList.add('active'); window.scrollTo({ top: 0, behavior: 'instant' }); }
   if (page === 'overview') loadOverview();
-  if (page === 'mint') loadWalletChecks('m-wallet-select');
-  if (page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
-  if (page === 'fund') loadWalletChecks('f-wallet-select');
+  loadPageWalletChecks(page);
   if (page === 'nft') { loadNFTs(); populateListWallet(); }
   if (page === 'wallets') loadWallets();
   if (page === 'history') loadHistory();
@@ -1336,9 +1354,7 @@ function onChainChange() {
 function refreshActivePageForChainChange() {
   const page = document.querySelector('.nav-tab.active')?.dataset.page;
   if (page === 'overview') loadOverview();
-  if (page === 'mint') loadWalletChecks('m-wallet-select');
-  if (page === 'schedule') { loadWalletChecks('s-wallet-select'); loadSchedules(); }
-  if (page === 'fund') loadWalletChecks('f-wallet-select');
+  loadPageWalletChecks(page);
   if (page === 'nft') { loadNFTs(); populateListWallet(); }
   if (page === 'wallets') loadWallets();
   if (page === 'history') loadHistory();
@@ -1694,7 +1710,9 @@ async function loadNFTs() {
   try {
     // FIX v19: /api/nfts requires walletAddress param (returns 400 without it)
     // Use /api/nfts/all which aggregates across all configured wallets
-    const data = await api('/api/nfts/all?chainId=' + (currentChainId||1));
+    const checked = getChecked('nft-wallet-select');
+    const walletParam = checked.length ? `&wallets=${checked.join(',')}` : '';
+    const data = await api('/api/nfts/all?chainId=' + (currentChainId||1) + walletParam);
     const nfts = data.nfts || [];
     el.innerHTML = nfts.length ? `<div class="nft-portfolio-scroll"><div class="nft-grid">` + nfts.map(n => `
       <div class="nft-card">
@@ -1705,7 +1723,7 @@ async function loadNFTs() {
           <div class="nft-detail" style="margin-top:2px;color:var(--gold)">${n.walletLabel||n.wallet?.slice(0,10)||''}</div>
         </div>
         <button class="nft-list-btn" onclick="prefillList('${n.contract||n.contractAddress}','${n.tokenId||n.identifier}')">List</button>
-      </div>`).join('') + `</div></div>` : '<div class="empty">No NFTs found on this chain</div>';
+      </div>`).join('') + `</div></div>` : `<div class="empty">No NFTs found${checked.length?' for the selected wallet(s)':' on this chain'}</div>`;
     const cnt = document.getElementById('nft-count');
     if (cnt) cnt.textContent = data.count || nfts.length;
   } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }
