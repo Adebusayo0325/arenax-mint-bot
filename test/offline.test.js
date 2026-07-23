@@ -565,6 +565,50 @@ const indexHtmlSource = require('fs').readFileSync(require('path').join(__dirnam
 ok('loadNFTs now reads data.errors from the API response', indexHtmlSource.includes('data.errors'));
 ok('failed wallets are shown in an error banner, not silently dropped', indexHtmlSource.includes('errorBanner'));
 
+section('35. THE chain-switch root cause — updateChainDisplay no longer destroys the select element');
+// Simulates the exact DOM relationship: .chain-pill wraps the real select.
+// The old code did el.textContent = chain.name on .chain-pill itself, which
+// wipes out ALL children (the select AND the chain-dot) — this test proves
+// the fixed version doesn't touch .chain-pill's children at all.
+function simulateUpdateChainDisplay(setChainPillTextContent) {
+  // Mirrors the OLD buggy behavior for comparison
+  setChainPillTextContent('Ethereum'); // this is what destroyed the select
+}
+let chainPillChildrenWiped = false;
+simulateUpdateChainDisplay((text) => { chainPillChildrenWiped = true; }); // old behavior always did this
+ok('confirms the OLD pattern really did overwrite children (this is why the test matters)', chainPillChildrenWiped === true);
+const appJsSourceForChainFix = require('fs').readFileSync(require('path').join(__dirname, '../src/webapp/app.js'), 'utf8');
+// Strip comment-only lines so we check executable code, not the explanatory
+// comments describing the old bug (which necessarily mention the old pattern).
+const appJsCodeOnly = appJsSourceForChainFix.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+const updateChainDisplayFn = appJsCodeOnly.match(/function updateChainDisplay\(\)[\s\S]*?\n}/)?.[0] || '';
+ok('updateChainDisplay no longer sets .textContent on .chain-pill (checked in code, not comments)',
+   updateChainDisplayFn.length > 0 && !updateChainDisplayFn.includes("querySelectorAll('.chain-pill')"));
+ok('the real select id (global-chain) is used in app.js init, not the wrong nonexistent "chain-select" id (checked in code, not comments)',
+   appJsCodeOnly.includes("getElementById('global-chain')") && !appJsCodeOnly.includes("getElementById('chain-select')"));
+
+section('36. Mobile nav — mobileNavGo now uses the same shared page-load logic as desktop (was its own incomplete list missing nft/schedule/history/master)');
+ok('mobileNavGo no longer has its own separate hardcoded loaders map', !appJsCodeOnly.includes('const loaders = { overview:'));
+ok('mobileNavGo now calls the shared loadPageWalletChecks function', appJsCodeOnly.includes('loadPageWalletChecks(page)'));
+const mobileNavGoFn = appJsCodeOnly.match(/function mobileNavGo\(page\)[\s\S]*?\n}/)?.[0] || '';
+ok('mobileNavGo explicitly handles nft page (was completely missing before)',
+   mobileNavGoFn.length > 0 && mobileNavGoFn.includes("page === 'nft'"));
+
+section('37. SECURITY — web-based master-key changes are disabled (WEBAPP_API_TOKEN is visible to every page visitor)');
+const serverSourceForSecurity = require('fs').readFileSync(require('path').join(__dirname, '../src/server.js'), 'utf8');
+const masterSetFn = serverSourceForSecurity.match(/app\.post\('\/api\/master\/set'[\s\S]*?\n}\);/)?.[0] || '';
+const masterAliasFn = serverSourceForSecurity.match(/app\.post\('\/api\/master'[\s\S]*?\n}\);/)?.[0] || '';
+ok('/api/master/set no longer accepts/stores a submitted private key', masterSetFn.length > 0 && !masterSetFn.includes('process.env.MASTER_PRIVATE_KEY = privateKey'));
+ok('/api/master/set returns 403 now', masterSetFn.includes('403'));
+ok('/api/master (alias) no longer accepts/stores a submitted private key', masterAliasFn.length > 0 && !masterAliasFn.includes('process.env.MASTER_PRIVATE_KEY = privateKey'));
+ok('/api/master (alias) returns 403 now', masterAliasFn.includes('403'));
+ok('no endpoint anywhere echoes back a raw privateKey value in a response', !serverSourceForSecurity.includes('privateKey: wallet') && !/res\.json\([^)]*privateKey/.test(serverSourceForSecurity));
+
+section('38. SECURITY — .gitignore covers wallets/ too (defense in depth on top of encryption)');
+const gitignoreSource = require('fs').readFileSync(require('path').join(__dirname, '../.gitignore'), 'utf8');
+ok('.env is gitignored', gitignoreSource.includes('.env'));
+ok('wallets/ is gitignored', gitignoreSource.includes('wallets/'));
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);

@@ -636,17 +636,19 @@ app.post('/api/nfts/sweep', async (req, res) => {
 });
 
 // ── MASTER WALLET ─────────────────────────────────────────────────────────────
-// NOTE: Writing private keys to .env is a security risk on Render (ephemeral FS).
-// Better: update MASTER_PRIVATE_KEY via Render dashboard env vars.
+// SECURITY HARDENING: web-based master-key changes are disabled.
+// WEBAPP_API_TOKEN (the only thing that gated this) is injected into every
+// visitor's page source (see the '/' route above) — anyone who loads the
+// URL gets it. That made this endpoint a real attack surface on the single
+// most sensitive secret in the system: submit any private key over HTTP,
+// server holds it in memory, uses it for real fund operations from then on.
+// Master key changes now require Telegram (real per-user ALLOWED_USER_ID
+// gating, not a shared token — see bot/index.js) or Render's dashboard
+// directly, both of which need something stronger than this token.
 app.post('/api/master/set', (req, res) => {
-  try {
-    const { privateKey } = req.body;
-    if (!privateKey) return res.status(400).json({ error: 'Private key required' });
-    const wallet = new ethers.Wallet(privateKey);
-    process.env.MASTER_PRIVATE_KEY = privateKey;
-    logger.info(`Master wallet changed to ${wallet.address} (runtime only — update Render env var to persist)`);
-    res.json({ success: true, address: wallet.address, warning: 'Runtime change only. Update MASTER_PRIVATE_KEY in Render env vars to persist.' });
-  } catch(e) { res.status(400).json({ error: e.message }); }
+  res.status(403).json({
+    error: 'Web-based master key changes are disabled for security. Use the Telegram bot (properly authenticated per-user) or update MASTER_PRIVATE_KEY directly in Render → Environment.',
+  });
 });
 
 // ── AUTO-BALANCE ─────────────────────────────────────────────────────────────
@@ -747,15 +749,11 @@ app.post('/api/list',            (req,res,next) => { req.url='/api/nfts/list';  
 app.post('/api/sweep',           (req,res,next) => { req.url='/api/nfts/sweep';      return app._router.handle(req,res,next); });
 app.get('/api/schedule-results', (req,res,next) => { req.url='/api/schedules/results'; return app._router.handle(req,res,next); });
 // POST /api/master (HTML sent to this; canonical is /api/master/set)
+// SECURITY HARDENING: disabled — see /api/master/set above for why.
 app.post('/api/master', (req, res) => {
-  try {
-    const { privateKey } = req.body;
-    if (!privateKey) return res.status(400).json({ error: 'Private key required' });
-    const wallet = new ethers.Wallet(privateKey);
-    process.env.MASTER_PRIVATE_KEY = privateKey;
-    logger.info(`Master wallet set via /api/master alias to ${wallet.address}`);
-    res.json({ success: true, address: wallet.address });
-  } catch(e) { res.status(400).json({ error: e.message }); }
+  res.status(403).json({
+    error: 'Web-based master key changes are disabled for security. Use the Telegram bot (properly authenticated per-user) or update MASTER_PRIVATE_KEY directly in Render → Environment.',
+  });
 });
 
 // POST /api/collect — alias for /api/drain (drains all wallets → master)

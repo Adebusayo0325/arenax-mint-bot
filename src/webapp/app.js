@@ -28,14 +28,24 @@ function mobileNavGo(page) {
   document.getElementById(`page-${page}`)?.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'instant' });
   closeMobileNav();
-  // Trigger page loads
-  const loaders = { overview: loadOverview, wallets: loadWallets, fund: ()=>renderWalletSelect('f-wallet-select','f'), mint: ()=>{ renderWalletSelect('m-wallet-select','m'); renderWalletSelect('s-wallet-select','s'); } };
-  loaders[page]?.();
+  // FIX: this used to have its own hardcoded loaders map (overview/wallets/
+  // fund/mint only) — nft, schedule, history, and master were silently
+  // missing, so mobile users (the primary way this bot is actually used)
+  // navigating to Portfolio via the bottom nav got an empty wallet
+  // checklist and no NFT load at all. Now it calls the same shared
+  // function the desktop tab click handler uses, so both paths stay in
+  // sync automatically instead of needing two lists kept manually aligned.
+  if (typeof loadPageWalletChecks === 'function') loadPageWalletChecks(page);
+  if (page === 'overview') loadOverview();
+  if (page === 'nft' && typeof loadNFTs === 'function') { loadNFTs(); if (typeof populateListWallet === 'function') populateListWallet(); }
+  if (page === 'wallets') loadWallets();
+  if (page === 'history' && typeof loadHistory === 'function') loadHistory();
+  if (page === 'master' && typeof loadMasterInfo === 'function') loadMasterInfo();
 }
 
 // ── SMART AUTO-FUND ───────────────────────────────────────────────────────────
 // ETH gas cost per funding tx per chain (21000 gas * typical base fee)
-const CHAIN_BASE_GWEI = { 1: 12, 8453: 0.008, 10: 0.002, 42161: 0.1, 137: 30, 56: 1, 81457: 0.001, 43114: 25, 59144: 0.05, 7777777: 0.0001 };
+const CHAIN_BASE_GWEI = { 1: 12, 8453: 0.008, 10: 0.002, 42161: 0.1, 137: 30, 56: 1, 81457: 0.001, 43114: 25, 59144: 0.05, 7777777: 0.0001, 4663: 0.01 };
 // FIX: these used to just return CHAIN_BASE_GWEI[chainId] synchronously —
 // a frozen, hardcoded guess with zero connection to actual network gas
 // conditions. Now they call the real /api/gas endpoint (backed by
@@ -362,9 +372,18 @@ function api(path, opts = {}) {
 // ── CHAIN SELECTOR ────────────────────────────────────────────────────────────
 function updateChainDisplay() {
   const chain = CHAINS[currentChainId] || CHAINS[1];
-  document.querySelectorAll('.chain-pill').forEach(el => {
-    el.textContent = chain.name;
-  });
+  // FIX: this used to do document.querySelectorAll('.chain-pill').forEach(el =>
+  // el.textContent = chain.name) — .chain-pill is the DIV THAT WRAPS the real
+  // <select id="global-chain"> dropdown (plus the chain-dot indicator).
+  // Setting .textContent on it destroys BOTH children, replacing the entire
+  // interactive select with a plain static text node showing just the chain
+  // name. This ran on every page load, right after the code that correctly
+  // set the select's value — so the dropdown was being set up correctly and
+  // then immediately destroyed a moment later. This is almost certainly THE
+  // root cause of "the chain switcher is static and doesn't work" — after
+  // this ran, it genuinely wasn't a dropdown anymore. The select already
+  // displays its own selected option's text natively; nothing here needs to
+  // touch it at all.
   document.querySelectorAll('.unit-symbol').forEach(el => {
     el.textContent = chain.symbol || 'ETH';
   });
@@ -796,7 +815,15 @@ document.getElementById('nft-refresh')?.addEventListener('click', () => { loadNF
 // inline script's loadWalletChecks('m-wallet-select') already covers wallet-select
 // init), and discord-status doesn't exist either — so only updateChainDisplay()
 // is actually worth keeping here.
-const chainSelectEl = document.getElementById('chain-select');
+//
+// FIX #2: this was still targeting the wrong id even after being made safe —
+// the real dropdown is #global-chain, not #chain-select. Without this fix,
+// even once chain selection started persisting to localStorage correctly,
+// the visible dropdown would never reflect the restored value on a fresh
+// page load — it would always visually show Ethereum (the first <option>)
+// regardless of what was actually saved, looking exactly like a stuck/static
+// selector even though the underlying state was correct.
+const chainSelectEl = document.getElementById('global-chain');
 if (chainSelectEl) chainSelectEl.value = currentChainId;
 updateChainDisplay();
 

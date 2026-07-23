@@ -1139,11 +1139,17 @@
   <div class="card">
     <div class="card-head"><span class="card-title">Master Wallet</span><span class="badge badge-gold">HOT WALLET</span></div>
     <div class="card-body">
+      <div class="status-bar" style="display:block;color:var(--red);border-color:var(--red);margin-bottom:12px;">
+        🔒 Setting the master key over the web is disabled for security — this page's API token is visible to
+        anyone who loads this URL, which made this the most sensitive endpoint in the app. To change the master
+        wallet: update <code>MASTER_PRIVATE_KEY</code> directly in Render → Environment (safest), or use the
+        Telegram bot, which checks your Telegram user ID rather than a shared token.
+      </div>
       <div class="field">
         <label class="field-label">Private Key</label>
-        <input class="input" id="mw-pk" type="password" placeholder="0x…"/>
+        <input class="input" id="mw-pk" type="password" placeholder="0x…" disabled/>
       </div>
-      <button class="btn btn-gold" onclick="setMaster()">Set Master Wallet</button>
+      <button class="btn btn-gold" onclick="setMaster()" disabled style="opacity:0.5;cursor:not-allowed;">Set Master Wallet (disabled)</button>
       <div class="status-bar" id="mw-status" style="display:none"></div>
       <div class="divider"></div>
       <div id="mw-info"></div>
@@ -1328,6 +1334,7 @@ async function autoDetectChain() {
 
 function switchToChain(chainId) {
   currentChainId = chainId;
+  localStorage.setItem('chainId', chainId); // FIX: was never persisted — see comment on onChainChange below
   const sel = document.getElementById('global-chain');
   if (sel) sel.value = chainId;
   toast(`Switched to ${CHAIN_NAMES[chainId]||'chain '+chainId}`, 'green');
@@ -1340,10 +1347,21 @@ function switchToChain(chainId) {
 // (currentChainId never updated, no page refreshed). This was the "switch
 // chain doesn't work" bug. switchToChain() above also referenced a
 // nonexistent 'chain-select' id instead of the real 'global-chain' id.
+//
+// FIX #2: even after the above fix, the chosen chain was only ever kept in
+// the in-memory currentChainId variable — nothing wrote it back to
+// localStorage. app.js reads localStorage.getItem('chainId') once, on
+// every fresh page load, to set the starting chain. Since nothing ever
+// updated that stored value, ANY page reload (reopening the tab,
+// navigating back, the browser restoring the page) silently reset the
+// chain back to whatever was last saved — Ethereum, effectively forever.
+// That's most likely why this looked "static": it may have worked for
+// the current page view, then reverted the next time the page loaded.
 function onChainChange() {
   const sel = document.getElementById('global-chain');
   if (!sel) return;
   currentChainId = parseInt(sel.value);
+  localStorage.setItem('chainId', currentChainId);
   toast(`Switched to ${CHAIN_NAMES[currentChainId]||'chain '+currentChainId}`, 'green');
   refreshActivePageForChainChange();
 }
