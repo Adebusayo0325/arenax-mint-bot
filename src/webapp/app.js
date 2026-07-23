@@ -36,13 +36,38 @@ function mobileNavGo(page) {
 // ── SMART AUTO-FUND ───────────────────────────────────────────────────────────
 // ETH gas cost per funding tx per chain (21000 gas * typical base fee)
 const CHAIN_BASE_GWEI = { 1: 12, 8453: 0.008, 10: 0.002, 42161: 0.1, 137: 30, 56: 1, 81457: 0.001, 43114: 25, 59144: 0.05, 7777777: 0.0001 };
+// FIX: these used to just return CHAIN_BASE_GWEI[chainId] synchronously —
+// a frozen, hardcoded guess with zero connection to actual network gas
+// conditions. Now they call the real /api/gas endpoint (backed by
+// getGasParams reading live provider.getFeeData()). The hardcoded table is
+// kept ONLY as a fallback if that call fails (e.g. offline), so this never
+// throws and always returns a usable number — but it's now genuinely live
+// gas whenever the network call succeeds.
+async function estFundingGasLive(chainId) {
+  try {
+    const data = await api(`/api/gas?chainId=${chainId}`);
+    if (data.live && data.gwei) return (21000 * data.gwei * 1e9) / 1e18;
+  } catch (e) { /* fall through to estimate */ }
+  const gwei = CHAIN_BASE_GWEI[chainId] || 10;
+  return (21000 * gwei * 1e9) / 1e18; // ETH — fallback estimate, not live
+}
+async function estMintGasLive(chainId) {
+  try {
+    const data = await api(`/api/gas?chainId=${chainId}`);
+    if (data.live && data.gwei) return (180000 * data.gwei * 1e9) / 1e18;
+  } catch (e) { /* fall through to estimate */ }
+  const gwei = CHAIN_BASE_GWEI[chainId] || 10;
+  return (180000 * gwei * 1e9) / 1e18; // ETH — fallback estimate, not live
+}
+// Kept for any other synchronous callers — clearly named as an estimate,
+// not a live reading, so it's not confused with the async versions above.
 function estFundingGas(chainId) {
   const gwei = CHAIN_BASE_GWEI[chainId] || 10;
-  return (21000 * gwei * 1e9) / 1e18; // ETH
+  return (21000 * gwei * 1e9) / 1e18; // ETH — static estimate, NOT live
 }
 function estMintGas(chainId) {
   const gwei = CHAIN_BASE_GWEI[chainId] || 10;
-  return (180000 * gwei * 1e9) / 1e18; // ETH — typical Seaport/ERC721 mint
+  return (180000 * gwei * 1e9) / 1e18; // ETH — static estimate, NOT live
 }
 
 async function calcSmartFund() {
@@ -50,8 +75,8 @@ async function calcSmartFund() {
   const qty       = parseInt(document.getElementById('ov-mint-qty')?.value)     || 1;
   const chainId   = parseInt(document.getElementById('ov-ab-chain')?.value)     || 1;
   const mintCost  = mintPrice * qty;
-  const mintGas   = estMintGas(chainId);
-  const fundGas   = estFundingGas(chainId);
+  const mintGas   = await estMintGasLive(chainId);
+  const fundGas   = await estFundingGasLive(chainId);
 
   // Smart target = mintCost + mintGas * 1.3 (30% buffer) — we also account for funding gas not being wasted
   const target    = parseFloat((mintCost + mintGas * 1.3).toFixed(6));
@@ -226,7 +251,7 @@ async function startExecFlow() {
   // Show gas estimate + confirm dialog
   xStep('confirm', 'active', 'Review gas estimate…', '');
   document.getElementById('exec-subtitle').textContent = 'Awaiting your confirmation…';
-  const estMG = estMintGas(currentChainId);
+  const estMG = await estMintGasLive(currentChainId);
   const area  = document.getElementById('exec-confirm-area');
   area.style.display = '';
   document.getElementById('exec-gas-rows').innerHTML = `

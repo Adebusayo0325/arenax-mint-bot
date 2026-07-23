@@ -1714,7 +1714,12 @@ async function loadNFTs() {
     const walletParam = checked.length ? `&wallets=${checked.join(',')}` : '';
     const data = await api('/api/nfts/all?chainId=' + (currentChainId||1) + walletParam);
     const nfts = data.nfts || [];
-    el.innerHTML = nfts.length ? `<div class="nft-portfolio-scroll"><div class="nft-grid">` + nfts.map(n => `
+    const errors = data.errors || [];
+    const errorBanner = errors.length
+      ? `<div class="empty" style="color:var(--red);margin-bottom:10px;text-align:left">⚠️ ${errors.length} wallet(s) failed to load: ` +
+        errors.map(e => `${e.walletLabel||e.wallet.slice(0,8)} (${e.error.slice(0,60)})`).join(', ') + `</div>`
+      : '';
+    el.innerHTML = errorBanner + (nfts.length ? `<div class="nft-portfolio-scroll"><div class="nft-grid">` + nfts.map(n => `
       <div class="nft-card">
         <div class="nft-thumb">${n.imageUrl||n.image_url ? `<img src="${n.imageUrl||n.image_url}" loading="lazy"/>` : '🖼'}</div>
         <div class="nft-meta">
@@ -1723,7 +1728,7 @@ async function loadNFTs() {
           <div class="nft-detail" style="margin-top:2px;color:var(--gold)">${n.walletLabel||n.wallet?.slice(0,10)||''}</div>
         </div>
         <button class="nft-list-btn" onclick="prefillList('${n.contract||n.contractAddress}','${n.tokenId||n.identifier}')">List</button>
-      </div>`).join('') + `</div></div>` : `<div class="empty">No NFTs found${checked.length?' for the selected wallet(s)':' on this chain'}</div>`;
+      </div>`).join('') + `</div></div>` : `<div class="empty">No NFTs found${checked.length?' for the selected wallet(s)':' on this chain'}</div>`);
     const cnt = document.getElementById('nft-count');
     if (cnt) cnt.textContent = data.count || nfts.length;
   } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }

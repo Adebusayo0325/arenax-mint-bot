@@ -15,6 +15,7 @@ const { detectMintPhase } = require('./core/phaseDetector');
 const { fundWallets, getMasterBalance, drainWallet, autoBalanceWallets } = require('./core/fundingManager');
 const { scheduleAllWallets, cancelSchedule, getActiveSchedules, loadScheduleResults } = require('./core/scheduler');
 const { getWalletNFTs, getListingCount, listNFT, listAtFloor, sweepNFTs, getFloorPrice, getCollectionSlug } = require('./core/nftManager');
+const { getGasParams } = require('./core/gasOracle');
 const axios = require('axios');
 const { getProvider } = require('./utils/rpcManager');
 const { PORT, BOT_TOKEN, WEBAPP_API_TOKEN } = require('./config');
@@ -120,6 +121,24 @@ app.use('/api/schedule', mintLimiter);
 
 // ── HEALTH ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', chain: process.env.CHAIN_ID || 1, ts: Date.now() }));
+
+// FIX: the webapp's "Smart Fund" calculator (calcSmartFund/estMintGas/
+// estFundingGas in app.js) had no real gas endpoint to call at all — it used
+// a hardcoded, frozen-at-write-time gwei table with zero connection to
+// actual network conditions. This is the real endpoint it should call instead.
+app.get('/api/gas', async (req, res) => {
+  try {
+    const chainId = parseInt(req.query.chainId || 1);
+    const competitive = req.query.priorityGas === 'true';
+    const params = await getGasParams(competitive ? 1.15 : 1.0, chainId, competitive);
+    const gwei = params.maxFeePerGas
+      ? Number(params.maxFeePerGas) / 1e9
+      : Number(params.gasPrice) / 1e9;
+    res.json({ chainId, gwei, maxFeePerGas: params.maxFeePerGas?.toString() || null, maxPriorityFeePerGas: params.maxPriorityFeePerGas?.toString() || null, gasPrice: params.gasPrice?.toString() || null, live: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message, live: false });
+  }
+});
 
 // ── KEEP-ALIVE: self-ping every 14 min to prevent Render free-tier sleep ──────
 // This fixes net::ERR_CONNECTION_CLOSED in the Telegram mini-app.

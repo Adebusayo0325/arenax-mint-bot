@@ -547,6 +547,24 @@ ok('filter is case-insensitive (checksum vs lowercase)',
 ok('filter matching nothing returns empty array, not an error',
    applyWalletFilter(sampleWallets, parseWalletFilter('0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead')).length === 0);
 
+section('33. Smart Fund gas — confirmed dud found and fixed (was a frozen hardcoded table, zero connection to live network)');
+const serverSource = require('fs').readFileSync(require('path').join(__dirname, '../src/server.js'), 'utf8');
+ok("real /api/gas endpoint now exists", serverSource.includes("app.get('/api/gas'"));
+ok("it actually calls getGasParams (live network read), not a static table", /api\/gas[\s\S]{0,400}getGasParams\(/.test(serverSource));
+const appJsSource = require('fs').readFileSync(require('path').join(__dirname, '../src/webapp/app.js'), 'utf8');
+ok("frontend now has live gas functions calling /api/gas", appJsSource.includes('estMintGasLive') && appJsSource.includes('estFundingGasLive'));
+ok("calcSmartFund uses the live version, not the hardcoded fallback", /calcSmartFund[\s\S]{0,600}estMintGasLive/.test(appJsSource));
+ok("pre-mint confirmation dialog also uses the live version now", appJsSource.includes('await estMintGasLive(currentChainId)'));
+// Regression guard: the old hardcoded table must still exist ONLY as a
+// documented fallback, not as the primary path silently pretending to be live
+ok("hardcoded table is clearly labeled as fallback-only, not live, in a comment",
+   appJsSource.includes('static estimate, NOT live'));
+
+section('34. NFT Portfolio — per-wallet fetch errors are now surfaced (previously identical to "you have zero NFTs")');
+const indexHtmlSource = require('fs').readFileSync(require('path').join(__dirname, '../src/webapp/index.html'), 'utf8');
+ok('loadNFTs now reads data.errors from the API response', indexHtmlSource.includes('data.errors'));
+ok('failed wallets are shown in an error banner, not silently dropped', indexHtmlSource.includes('errorBanner'));
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);
