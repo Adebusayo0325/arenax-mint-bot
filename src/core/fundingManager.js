@@ -22,7 +22,11 @@ function getMasterKey() {
 
 async function getMasterWallet(chainId) {
   const provider = await getProvider(chainId);
-  return new ethers.Wallet(getMasterKey(), provider);
+  const wallet = new ethers.Wallet(getMasterKey(), provider);
+  if (require('../utils/securityGuard').isCompromised(wallet.address)) {
+    logger.error(`🚨 MASTER WALLET (${wallet.address}) IS ON THE COMPROMISED-ADDRESS LIST. Read-only checks (balance) still work, but funding/auto-balance will refuse to use it as a source. Set a new MASTER_PRIVATE_KEY in Render env.`);
+  }
+  return wallet;
 }
 
 async function getMasterBalance(chainId) {
@@ -43,18 +47,26 @@ async function getMasterBalance(chainId) {
 //   3. Wait for all confirmations in a second parallel Promise.all
 // Net result: N wallets funded in ~1 block instead of N blocks.
 async function fundWallets(addresses, amountEthEach, chainId) {
+  const { isCompromised } = require('../utils/securityGuard');
+  const blocked = addresses.filter(isCompromised);
+  const safeAddresses = addresses.filter(a => !isCompromised(a));
+  if (blocked.length) {
+    logger.error(`🚨 BLOCKED funding to ${blocked.length} known-compromised address(es): ${blocked.join(', ')}`);
+  }
+
   const provider = await getProvider(chainId);
   const master   = new ethers.Wallet(getMasterKey(), provider);
+  require('../utils/securityGuard').assertSafeAddress(master.address, 'master wallet as funding source');
   const gasParams = await getFundingGasParams(chainId); // v13: 1.05x tip for ETH sends
   const value    = ethers.parseEther(amountEthEach.toString());
 
   // Get starting nonce — 'pending' so in-flight txs are counted
   const startNonce = await provider.getTransactionCount(master.address, 'pending');
-  logger.info(`Funding ${addresses.length} wallets in parallel | startNonce=${startNonce}`);
+  logger.info(`Funding ${safeAddresses.length} wallets in parallel | startNonce=${startNonce}`);
 
   // Phase 1: broadcast all transactions simultaneously
   const sent = await Promise.all(
-    addresses.map(async (address, i) => {
+    safeAddresses.map(async (address, i) => {
       try {
         const tx = await master.sendTransaction({
           to: address,
@@ -85,13 +97,15 @@ async function fundWallets(addresses, amountEthEach, chainId) {
     })
   );
 
-  return results;
+  const blockedResults = blocked.map(address => ({ address, status: 'blocked', error: 'Address is on the compromised-address list — refused to send funds to it.' }));
+  return [...results, ...blockedResults];
 }
 
 async function drainWallet(fromAddress, getWalletSigner, chainId) {
   const provider   = await getProvider(chainId);
   const signer     = getWalletSigner(fromAddress, provider);
   const master     = new ethers.Wallet(getMasterKey(), provider);
+  require('../utils/securityGuard').assertSafeAddress(master.address, 'drainWallet destination (master)');
   const gasParams = await getFundingGasParams(chainId); // v13: 1.05x tip for ETH sends
   const gasLimit   = BigInt(21000);
 
@@ -131,6 +145,7 @@ async function autoBalanceWallets(walletAddresses, minEth, targetEth, chainId = 
   // getMasterWallet is async — MUST be awaited or master is a Promise and .privateKey = undefined
   const master  = await getMasterWallet(chainId);
   if (!master?.address) throw new Error('MASTER_PRIVATE_KEY not configured or invalid in Render env. Check Environment → MASTER_PRIVATE_KEY.');
+  require('../utils/securityGuard').assertSafeAddress(master.address, 'master wallet as auto-balance source');
 
   const provider  = master.provider;
   const signer    = master;
@@ -143,8 +158,14 @@ async function autoBalanceWallets(walletAddresses, minEth, targetEth, chainId = 
   logger.info(`[AutoBalance] master=${master.address.slice(0,8)} bal=${ethers.formatEther(masterBal)} ETH wallets=${walletAddresses.length}`);
 
   const results = [];
+  const { isCompromised } = require('../utils/securityGuard');
 
   for (const address of walletAddresses) {
+    if (isCompromised(address)) {
+      logger.error(`🚨 BLOCKED auto-balance top-up to known-compromised address: ${address}`);
+      results.push({ address, status: 'blocked', error: 'Address is on the compromised-address list — refused to send funds to it.' });
+      continue;
+    }
     let bal;
     try { bal = await provider.getBalance(address); }
     catch(e) { results.push({ address, status: 'failed', error: `getBalance: ${e.message.slice(0,60)}` }); continue; }

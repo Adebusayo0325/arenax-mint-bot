@@ -247,6 +247,8 @@ function saveWallets(wallets) {
 function addWallet(privateKey, label = '', spendLimit = null) {
   const wallets = loadWallets();
   const wallet  = new ethers.Wallet(privateKey);
+  const { assertSafeAddress } = require('../utils/securityGuard');
+  assertSafeAddress(wallet.address, 'addWallet'); // throws if this address is known-compromised
   const exists  = wallets.find(w => w.address === wallet.address);
   if (exists) throw new Error(`Wallet ${wallet.address} already exists`);
   wallets.push({ address: wallet.address, privateKey, label, spendLimit });

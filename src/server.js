@@ -780,7 +780,49 @@ app.post('/api/auto-balance', async (req, res) => {
     res.json({ results });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── SECURITY CHECK ────────────────────────────────────────────────────────────
+// Returns any configured wallet or the master key that matches a known-
+// compromised address (see COMPROMISED_ADDRESSES in Render env). Read-only,
+// never throws — safe for the webapp to poll on every Overview load.
+app.get('/api/security-check', async (req, res) => {
+  try {
+    const { scanForCompromisedAddresses } = require('./utils/securityGuard');
+    let masterAddress = null;
+    try {
+      const { getMasterWallet } = require('./core/fundingManager');
+      const master = await getMasterWallet(parseInt(req.query.chainId || 1));
+      masterAddress = master?.address || null;
+    } catch (e) { /* master not configured — nothing to check there */ }
+    const issues = scanForCompromisedAddresses(masterAddress, getWallets());
+    res.json({ issues, clean: issues.length === 0 });
+  } catch (e) { res.status(500).json({ error: e.message, clean: null }); }
+});
+
 // ── END ALIASES ───────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => logger.info(`Hermès Bot running on :${PORT}`));
+app.listen(PORT, () => {
+  logger.info(`Hermès Bot running on :${PORT}`);
+  // Startup compromised-address scan — loud console warning, doesn't block boot.
+  // Balance-check-only concerns (rate limits, RPC cost) mean this runs once at
+  // startup rather than looping; the webapp's /api/security-check polls live.
+  (async () => {
+    try {
+      const { scanForCompromisedAddresses } = require('./utils/securityGuard');
+      const config = require('./config');
+      if (!config.COMPROMISED_ADDRESSES.length) return; // nothing configured to check against
+      let masterAddress = null;
+      try {
+        const { getMasterWallet } = require('./core/fundingManager');
+        masterAddress = (await getMasterWallet(config.DEFAULT_CHAIN_ID))?.address || null;
+      } catch (e) { /* master not configured yet */ }
+      const issues = scanForCompromisedAddresses(masterAddress, getWallets());
+      if (issues.length) {
+        logger.error(`🚨🚨🚨 STARTUP SECURITY CHECK: ${issues.length} configured address(es) match your compromised list:`);
+        issues.forEach(i => logger.error(`   [${i.role}] ${i.address} ${i.label ? '('+i.label+')' : ''}`));
+      } else {
+        logger.info(`Startup security check: no configured addresses match the compromised list.`);
+      }
+    } catch (e) { logger.warn(`Startup security check failed to run: ${e.message}`); }
+  })();
+});
 module.exports = app;

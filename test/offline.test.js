@@ -609,6 +609,69 @@ const gitignoreSource = require('fs').readFileSync(require('path').join(__dirnam
 ok('.env is gitignored', gitignoreSource.includes('.env'));
 ok('wallets/ is gitignored', gitignoreSource.includes('wallets/'));
 
+section('39. SECURITY — compromised-address guard (new: blocks funding to/from known-hacked addresses)');
+// INLINE COPY of securityGuard.js logic — avoids requiring the real module,
+// which pulls in config/index.js -> dotenv (not installed in this sandbox,
+// will be in the real deployment). Mirrors this file's established
+// convention for every other test section.
+function makeGuard(compromisedList) {
+  const set = compromisedList.map(a => a.toLowerCase());
+  function isCompromised(address) {
+    if (!address) return false;
+    return set.includes(String(address).toLowerCase());
+  }
+  function assertSafeAddress(address, context) {
+    if (isCompromised(address)) throw new Error(`BLOCKED: ${address} is compromised (${context})`);
+  }
+  function scanForCompromisedAddresses(masterAddress, wallets = []) {
+    const issues = [];
+    if (masterAddress && isCompromised(masterAddress)) issues.push({ role: 'master', address: masterAddress });
+    for (const w of wallets) if (isCompromised(w.address)) issues.push({ role: 'wallet', address: w.address, label: w.label || '' });
+    return issues;
+  }
+  return { isCompromised, assertSafeAddress, scanForCompromisedAddresses };
+}
+
+const guard = makeGuard(['0xDEAD000000000000000000000000000000BEEF', '0xAAAA000000000000000000000000000000AAAA']);
+ok('isCompromised is case-insensitive and matches a real entry',
+   guard.isCompromised('0xdead000000000000000000000000000000beef') === true);
+ok('isCompromised matches checksummed-case input too',
+   guard.isCompromised('0xDEAD000000000000000000000000000000BEEF') === true);
+ok('isCompromised returns false for an address not on the list',
+   guard.isCompromised('0x1111111111111111111111111111111111111') === false);
+ok('isCompromised handles null/undefined safely (no throw)', guard.isCompromised(null) === false && guard.isCompromised(undefined) === false);
+let threwOnCompromised = false;
+try { guard.assertSafeAddress('0xdead000000000000000000000000000000beef', 'test'); }
+catch (e) { threwOnCompromised = true; }
+ok('assertSafeAddress throws for a compromised address', threwOnCompromised === true);
+let threwOnSafe = false;
+try { guard.assertSafeAddress('0x1234567890123456789012345678901234567890', 'test'); }
+catch (e) { threwOnSafe = true; }
+ok('assertSafeAddress does NOT throw for a safe address', threwOnSafe === false);
+
+const scanResults = guard.scanForCompromisedAddresses(
+  '0xdead000000000000000000000000000000beef', // compromised master
+  [
+    { address: '0x1234567890123456789012345678901234567890', label: 'Safe1' },
+    { address: '0xaaaa000000000000000000000000000000aaaa', label: 'Bad2' },
+  ]
+);
+ok('scanForCompromisedAddresses catches a compromised master', scanResults.some(i => i.role === 'master'));
+ok('scanForCompromisedAddresses catches a compromised wallet in the list', scanResults.some(i => i.role === 'wallet' && i.label === 'Bad2'));
+ok('scanForCompromisedAddresses does not flag the safe wallet', !scanResults.some(i => i.label === 'Safe1'));
+ok('scanForCompromisedAddresses returns empty array when nothing matches (never throws)',
+   guard.scanForCompromisedAddresses('0x1234567890123456789012345678901234567890', []).length === 0);
+
+section('40. SECURITY — the guard is actually wired into wallet-add and funding, not just sitting unused');
+const walletManagerSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/walletManager.js'), 'utf8');
+ok('addWallet calls assertSafeAddress', walletManagerSource.includes('assertSafeAddress'));
+ok('fundWallets checks recipients against isCompromised', /async function fundWallets[\s\S]{0,300}isCompromised/.test(fundingManagerSource));
+ok('autoBalanceWallets checks recipients against isCompromised', /async function autoBalanceWallets[\s\S]{0,1500}isCompromised/.test(fundingManagerSource));
+ok('drainWallet guards the master destination', /async function drainWallet[\s\S]{0,300}assertSafeAddress/.test(fundingManagerSource));
+const serverSourceForSecCheck = require('fs').readFileSync(require('path').join(__dirname, '../src/server.js'), 'utf8');
+ok('/api/security-check endpoint exists', serverSourceForSecCheck.includes("app.get('/api/security-check'"));
+ok('startup scan runs on boot', serverSourceForSecCheck.includes('STARTUP SECURITY CHECK'));
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════');
 console.log(`Results: ${passed} passed, ${failed} failed`);

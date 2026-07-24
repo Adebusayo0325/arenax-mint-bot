@@ -17,6 +17,16 @@ const config = {
   DRY_RUN: process.env.DRY_RUN === 'true',
   DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || '',
 
+  // ── Compromised address guard ───────────────────────────────────────────
+  // Comma-separated list of addresses known to be hacked/burned (e.g. a
+  // wallet drained via an EIP-7702 delegation sweep). The bot actively
+  // refuses to send funds TO these addresses (funding/auto-balance) or
+  // accept them as a new wallet/master key, and warns loudly at startup
+  // and in the webapp if one is still configured anywhere.
+  // Set in Render: COMPROMISED_ADDRESSES=0xabc...,0xdef...
+  COMPROMISED_ADDRESSES: (process.env.COMPROMISED_ADDRESSES || '')
+    .split(',').map(a => a.trim().toLowerCase()).filter(Boolean),
+
   // ── Redis (optional — enables persistent schedules across restarts) ──
   // Toggle: set REDIS_URL in Render env to enable. Leave unset for JSON-only.
   REDIS_URL: process.env.REDIS_URL || null,
